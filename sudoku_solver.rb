@@ -2,17 +2,17 @@
 
 PUZZLE_WIDTH = 9
 PUZZLE_DISPLAY_WIDTH = 25
+SORTED_NUMBERS = [1,2,3,4,5,6,7,8,9]
 
 class SudokuPuzzle
   def initialize(data)
-    @data = data.delete("\r\n").split("")
+    @data = data.delete("\r\n").split("").map(&:to_i)
     print_puzzle
   end
 
   def print_puzzle
-    puts "Puzzle: #{@data.inspect}"
     @data.each_with_index do |char,index|
-      char = "-" if char == "0"
+      char = "-" if char == 0
       print_horizontal_line if (index%27 == 0)
       if (index%3 == 0)
         print "| "
@@ -22,18 +22,57 @@ class SudokuPuzzle
     end
     print_horizontal_line
 
+    puts "Solved? #{solved?}"
+  end
 
-    puts "(5,5)"
-    puts row_value(5,5)
-    puts column_value(5,5)
-    puts value_at(5,5)
-    puts ""
+  def solved?
+    solved = true
+    (0..8).each do |i|
+      solved = solved && validate_row(i)
+      solved = solved && validate_column(i)
+      solved = solved && validate_grid(i)
+    end
+    solved
+  end
 
-    puts "(3,7)"
-    puts row_value(3,7)
-    puts column_value(7,3)
-    puts value_at(3,7)
-    puts ""
+  def validate_row(num)
+    get_row(num).sort == SORTED_NUMBERS 
+  end
+
+  def validate_column(num)
+    get_column(num).sort == SORTED_NUMBERS
+  end
+
+  def validate_grid(num)
+    get_grid(num).sort == SORTED_NUMBERS
+  end
+
+  def get_row(num)
+    @data[(num*PUZZLE_WIDTH)..(num*PUZZLE_WIDTH)+8]
+  end
+
+  def get_column(num)
+    col = []
+    @data.each_with_index {|val,index| col << val if (index%PUZZLE_WIDTH == num)}
+    col 
+  end
+
+  def get_grid(num)
+    start_row = (num/3) * 3
+    start_col = (num%3) * 3
+
+    grid = []
+    grid << value_at(start_row,start_col)
+    grid << value_at(start_row,start_col+1)
+    grid << value_at(start_row,start_col+2)
+    
+    grid << value_at(start_row+1,start_col)
+    grid << value_at(start_row+1,start_col+1)
+    grid << value_at(start_row+1,start_col+2)
+    
+    grid << value_at(start_row+2,start_col)
+    grid << value_at(start_row+2,start_col+1)
+    grid << value_at(start_row+2,start_col+2)
   end
 
   def print_horizontal_line
@@ -56,7 +95,6 @@ end
 class SudokuSolver
   def initialize(file)
     @file = File.read(file)
-    puts @file
     @puzzles = []
     @file.each_line do |line|
       @puzzles << SudokuPuzzle.new(line)
