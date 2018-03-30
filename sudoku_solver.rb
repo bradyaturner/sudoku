@@ -12,12 +12,9 @@ class SudokuPuzzle
 
   def print_puzzle
     @data.each_with_index do |char,index|
-      char = "-" if char == 0
       print_horizontal_line if (index%27 == 0)
-      if (index%3 == 0)
-        print "| "
-      end
-      print "#{char}"
+      print "| " if (index%3 == 0)
+      print char==0 ? "-" : "#{char}"
       print (index+1)%9==0 ? " |\n" : " "
     end
     print_horizontal_line
@@ -28,9 +25,9 @@ class SudokuPuzzle
   def solved?
     solved = true
     (0..8).each do |i|
-      solved = solved && validate_row(i)
-      solved = solved && validate_column(i)
-      solved = solved && validate_grid(i)
+      solved = solved && validate_row(i) \
+        && validate_column(i) \
+        && validate_grid(i)
     end
     solved
   end
@@ -86,9 +83,7 @@ class SudokuSolver
   def initialize(file)
     @file = File.read(file)
     @puzzles = []
-    @file.each_line do |line|
-      @puzzles << SudokuPuzzle.new(line)
-    end
+    @file.each_line {|line| @puzzles << SudokuPuzzle.new(line)}
   end
 
   def solve
