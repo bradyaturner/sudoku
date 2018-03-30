@@ -60,19 +60,9 @@ class SudokuPuzzle
   def get_grid(num)
     start_row = (num/3) * 3
     start_col = (num%3) * 3
-
     grid = []
-    grid << value_at(start_row,start_col)
-    grid << value_at(start_row,start_col+1)
-    grid << value_at(start_row,start_col+2)
-    
-    grid << value_at(start_row+1,start_col)
-    grid << value_at(start_row+1,start_col+1)
-    grid << value_at(start_row+1,start_col+2)
-    
-    grid << value_at(start_row+2,start_col)
-    grid << value_at(start_row+2,start_col+1)
-    grid << value_at(start_row+2,start_col+2)
+    (0..8).each {|i| grid << value_at(start_row+i/3,start_col+i%3)}
+    grid
   end
 
   def print_horizontal_line
