@@ -3,18 +3,47 @@
 PUZZLE_WIDTH = 9
 PUZZLE_DISPLAY_WIDTH = 25
 SORTED_NUMBERS = [1,2,3,4,5,6,7,8,9]
+EMPTY_CHAR = "-"
+
+class SudokuValue
+  attr_reader :value
+  def initialize(initial_value)
+    @initial_value = initial_value
+    @value = initial_value
+    if @initial_value == 0
+      @possible_values = Array.new(SORTED_NUMBERS) # TODO what to initialize this to?
+    else
+      @possible_values = [initial_value]
+    end
+  end
+
+  def solved?
+    (@value != 0) && (@possible_values.length == 1)
+  end
+
+  def remove_possible_value(val)
+    @possible_values.delete val
+  end
+
+  def to_s
+    @value == 0 ? EMPTY_CHAR : @value
+  end
+end
 
 class SudokuPuzzle
   def initialize(data)
-    @data = data.delete("\r\n").split("").map(&:to_i)
+    @data = []
+    data.delete("\r\n").split("").map(&:to_i).each do |v|
+      @data << SudokuValue.new(v)
+    end
     print_puzzle
   end
 
   def print_puzzle
-    @data.each_with_index do |char,index|
+    @data.each_with_index do |value,index|
       print_horizontal_line if (index%27 == 0)
       print "| " if (index%3 == 0)
-      print char==0 ? "-" : "#{char}"
+      print value.to_s
       print (index+1)%9==0 ? " |\n" : " "
     end
     print_horizontal_line
@@ -33,15 +62,15 @@ class SudokuPuzzle
   end
 
   def validate_row(num)
-    get_row(num).sort == SORTED_NUMBERS 
+    get_row(num).collect{|v| v.value}.sort == SORTED_NUMBERS
   end
 
   def validate_column(num)
-    get_column(num).sort == SORTED_NUMBERS
+    get_column(num).collect{|v| v.value}.sort == SORTED_NUMBERS
   end
 
   def validate_grid(num)
-    get_grid(num).sort == SORTED_NUMBERS
+    get_grid(num).collect{|v| v.value}.sort == SORTED_NUMBERS
   end
 
   def get_row(num)
@@ -93,6 +122,7 @@ end
 if __FILE__==$0
   if !ARGV[0]
     STDERR.puts "USAGE: #{__FILE__} [FILE]"
+    exit 0
   end
   solver = SudokuSolver.new ARGV[0]
   solver.solve
