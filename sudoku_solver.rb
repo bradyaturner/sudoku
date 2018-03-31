@@ -75,6 +75,12 @@ class SudokuPuzzle
     solved
   end
 
+  def remaining_numbers
+    numbers = Array.new(SORTED_NUMBERS)
+    (0..8).each {|i| numbers &= get_grid_values(i)}
+    SORTED_NUMBERS - numbers
+  end
+
   def validate_row(num)
     get_row_values(num).sort == SORTED_NUMBERS
   end
@@ -174,17 +180,32 @@ class SudokuSolver
           raise UnsolvableError, "Could not solve puzzle in #{MAX_ITERATIONS} iterations. LITERALLY UNSOLVABLE!!"
         end
       end
-      puts "SOLVED!"
-      puts "Initial state:"
-      @puzzle.print_puzzle(true)
-      puts "Solution:"
-      @puzzle.print_puzzle
-      puts @puzzle.serialize
-      puts "Solved in #{@iterations} iterations."
+      print_success
     rescue SudokuError => e
       puts e.message
+      print_failure
     end
     @puzzle.solved?
+  end
+
+  def print_success
+    puts "SOLVED!"
+    puts "Initial state:"
+    @puzzle.print_puzzle(true)
+    puts "Solution:"
+    @puzzle.print_puzzle
+    puts @puzzle.serialize
+    puts "Solved in #{@iterations} iterations."
+  end
+
+  def print_failure
+    puts "FAILED."
+    puts "Initial state:"
+    @puzzle.print_puzzle(true)
+    puts "Final state:"
+    @puzzle.print_puzzle
+    puts "Gave up after #{@iterations} iterations."
+    puts "Numbers remaining: #{@puzzle.remaining_numbers}"
   end
 
   def update_possible_values
@@ -209,7 +230,6 @@ class SudokuSolver
       @logger.debug "\tPossible: #{value.possible_values}#{value.solved? ? " (solved)" : ""}"
     end
     update_count
-
   end
 
   def check_value_candidates
