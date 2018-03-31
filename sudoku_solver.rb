@@ -25,6 +25,12 @@ class SudokuValue
     (@value != 0) && (@possible_values.length == 1)
   end
 
+  def set_value(v)
+    raise "Not possible value! #{v}, #{@possible_values.inspect}" if !@possible_values.include?(v)
+    @value = v
+    @possible_values = [v]
+  end
+
   def remove_possible_values(values)
     @possible_values -= values
     if @possible_values.length == 1
@@ -46,8 +52,6 @@ class SudokuPuzzle
     data.delete("\r\n").split("").map(&:to_i).each do |v|
       @data << SudokuValue.new(v)
     end
-    print_puzzle
-    puts "Solved? #{solved?}"
   end
 
   def print_puzzle(initial_state=false)
@@ -152,16 +156,24 @@ class SudokuSolver
 
   def solve
     puts "Solving puzzle..."
+    @puzzle.print_puzzle(true)
     begin
       loop do
         break if @puzzle.solved? # need to check first for already-solved puzzles
-        update_possible_values
+        @logger.debug "*** beginning update iteration #{@iterations} ***"
+        update_count = update_possible_values
+        update_count += check_value_candidates
+        @logger.debug "*** update iteration #{@iterations} complete ***"
+        if update_count == 0
+          raise "Update iteration ran with no changes made -- puzzle in unsolvable state!!"
+        end
         break if @puzzle.solved?
         @iterations += 1
         if @iterations >= MAX_ITERATIONS
           raise "Could not solve puzzle in #{MAX_ITERATIONS} iterations. LITERALLY UNSOLVABLE!!"
         end
       end
+      puts "SOLVED!"
       puts "Initial state:"
       @puzzle.print_puzzle(true)
       puts "Solution:"
@@ -174,35 +186,64 @@ class SudokuSolver
   end
 
   def update_possible_values
-    @logger.info "*** beginning update iteration #{@iterations} ***"
     update_count = 0
     @puzzle.data.each_with_index do |value,index|
       next if value.solved?
       row_num = index / 9
       col_num = index % 9
       grid_num = ((row_num/3)*3) + (col_num/3)
-      @logger.info "Value #{value} at pos (#{row_num},#{col_num}) in grid ##{grid_num}"
+      @logger.debug "Value #{value} at pos (#{row_num},#{col_num}) in grid ##{grid_num}"
 
       row_contents = @puzzle.get_row_values row_num
       col_contents = @puzzle.get_column_values col_num
       grid_contents = @puzzle.get_grid_values grid_num
-      @logger.debug "\tRow ##{row_num}: #{row_contents.inspect}"
-      @logger.debug "\tCol ##{col_num}: #{col_contents.inspect}"
-      @logger.debug "\tGrid ##{grid_num}: #{grid_contents.inspect}"
       excluded = (row_contents + col_contents + grid_contents - [0]).uniq
-      @logger.debug "\tExcluded: #{excluded.inspect}"
 
       # only perform update and increment counter if there are actually items that would be removed
       if (value.possible_values & excluded).length > 0
         update_count += 1
         value.remove_possible_values(excluded)
       end
-      @logger.info "\tPossible: #{value.possible_values}#{value.solved? ? " (solved)" : ""}"
+      @logger.debug "\tPossible: #{value.possible_values}#{value.solved? ? " (solved)" : ""}"
     end
-    if update_count == 0
-      raise "Update iteration ran with no changes made -- puzzle in unsolvable state!!"
+    update_count
+
+  end
+
+  def check_value_candidates
+    # TODO check row, col, grid for each ? value -- am I the only one who can be this value?
+    update_count = 0
+    @puzzle.data.each_with_index do |value,index|
+      next if value.solved?
+      row_num = index / 9
+      col_num = index % 9
+      grid_num = ((row_num/3)*3) + (col_num/3)
+      @logger.debug "Value #{value} at pos (#{row_num},#{col_num}) in grid ##{grid_num}"
+
+      row_contents = @puzzle.get_row row_num
+      col_contents = @puzzle.get_column col_num
+      grid_contents = @puzzle.get_grid grid_num
+
+      new_value = nil
+      value.possible_values.each do |v|
+        @logger.debug "\tChecking possible value: #{v}"
+        ri = row_contents.select{|rc| rc.possible_values.include? v}.length# == 1 # including ourself
+        @logger.debug "\t#{ri} elegible items in this row."
+        ci = col_contents.select{|cc| cc.possible_values.include? v}.length# == 1 # including ourself
+        @logger.debug "\t#{ci} elegible items in this column."
+        gi = grid_contents.select{|gc| gc.possible_values.include? v}.length# == 1 # including ourself
+        @logger.debug "\t#{gi} elegible items in this grid."
+        if (ri == 1) || (ci == 1) || (gi == 1)
+          new_value = v
+          break
+        end
+      end
+      if !new_value.nil?
+        value.set_value(new_value)
+        update_count += 1
+      end
     end
-    @logger.info "*** update iteration #{@iterations} complete ***"
+    update_count
   end
 end
 
@@ -212,5 +253,8 @@ if __FILE__==$0
     exit 0
   end
   puzzles = SudokuReader.new(ARGV[0]).puzzles
-  puzzles.each {|p| SudokuSolver.new(p).solve}
+  puzzles.each do |p|
+    SudokuSolver.new(p).solve
+    puts "\n\n\n"
+  end
 end

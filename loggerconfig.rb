@@ -1,5 +1,5 @@
 require 'logger'
 
 module LoggerConfig
-  SUDOKUSOLVER_LEVEL = Logger::WARN
+  SUDOKUSOLVER_LEVEL = Logger::INFO
 end
