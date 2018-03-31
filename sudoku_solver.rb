@@ -4,19 +4,26 @@ require 'logger'
 require './loggerconfig'
 require './exceptions'
 
+# not sure everything works with other sizes
 PUZZLE_WIDTH = 9
+GRID_WIDTH = 3
+
 PUZZLE_DISPLAY_WIDTH = 25
 SORTED_NUMBERS = [1,2,3,4,5,6,7,8,9]
 EMPTY_CHAR = "-"
 MAX_ITERATIONS = 1000
 
 class SudokuValue
-  attr_reader :value, :initial_value, :possible_values
-  def initialize(initial_value)
+  attr_reader :value, :initial_value, :possible_values, :row_num,
+    :col_num, :grid_num
+  def initialize(initial_value, row_num, col_num, grid_num)
     @initial_value = initial_value
     @value = initial_value
+    @row_num = row_num
+    @col_num = col_num
+    @grid_num = grid_num
     if @initial_value == 0
-      @possible_values = Array.new(SORTED_NUMBERS) # TODO what to initialize this to?
+      @possible_values = Array.new(SORTED_NUMBERS)
     else
       @possible_values = [initial_value]
     end
@@ -42,7 +49,7 @@ class SudokuValue
   end
 
   def to_s
-    @value == 0 ? EMPTY_CHAR : @value
+    "Value #{value} at pos (#{row_num},#{col_num}) in grid ##{grid_num}"
   end
 end
 
@@ -50,16 +57,24 @@ class SudokuPuzzle
   attr_reader :data
   def initialize(data)
     @data = []
-    data.delete("\r\n").split("").map(&:to_i).each do |v|
-      @data << SudokuValue.new(v)
+    data.delete("\r\n").split("").map(&:to_i).each_with_index do |v,i|
+      row, col, grid = index_to_coords(i)
+      @data << SudokuValue.new(v,row,col,grid)
     end
+  end
+
+  def index_to_coords(i)
+    row = i/PUZZLE_WIDTH
+    col = i%PUZZLE_WIDTH
+    grid = ((row/GRID_WIDTH)*GRID_WIDTH) + (col/GRID_WIDTH)
+    [row,col,grid]
   end
 
   def print_puzzle(initial_state=false)
     @data.each_with_index do |value,index|
       print_horizontal_line if (index%27 == 0)
       print "| " if (index%3 == 0)
-      print initial_state ? (value.initial_value == 0 ? EMPTY_CHAR : value.initial_value) : value.to_s
+      print initial_state ? (value.initial_value == 0 ? EMPTY_CHAR : value.initial_value) : value.value
       print (index+1)%9==0 ? " |\n" : " "
     end
     print_horizontal_line
@@ -222,17 +237,13 @@ class SudokuSolver
     update_count = 0
     @puzzle.data.each_with_index do |value,index|
       next if value.solved?
-      row_num = index / 9
-      col_num = index % 9
-      grid_num = ((row_num/3)*3) + (col_num/3)
-      @logger.debug "Value #{value} at pos (#{row_num},#{col_num}) in grid ##{grid_num}"
+      @logger.debug value.to_s
 
-      row_contents = @puzzle.get_row_values row_num
-      col_contents = @puzzle.get_column_values col_num
-      grid_contents = @puzzle.get_grid_values grid_num
+      row_contents = @puzzle.get_row_values value.row_num
+      col_contents = @puzzle.get_column_values value.col_num
+      grid_contents = @puzzle.get_grid_values value.grid_num
       excluded = (row_contents + col_contents + grid_contents - [0]).uniq
 
-      # only perform update and increment counter if there are actually items that would be removed
       if (value.possible_values & excluded).length > 0
         update_count += 1
         value.remove_possible_values(excluded)
@@ -243,27 +254,23 @@ class SudokuSolver
   end
 
   def check_value_candidates
-    # TODO check row, col, grid for each ? value -- am I the only one who can be this value?
     update_count = 0
     @puzzle.data.each_with_index do |value,index|
       next if value.solved?
-      row_num = index / 9
-      col_num = index % 9
-      grid_num = ((row_num/3)*3) + (col_num/3)
-      @logger.debug "Value #{value} at pos (#{row_num},#{col_num}) in grid ##{grid_num}"
+      @logger.debug value.to_s
 
-      row_contents = @puzzle.get_row row_num
-      col_contents = @puzzle.get_column col_num
-      grid_contents = @puzzle.get_grid grid_num
+      row_contents = @puzzle.get_row value.row_num
+      col_contents = @puzzle.get_column value.col_num
+      grid_contents = @puzzle.get_grid value.grid_num
 
       new_value = nil
       value.possible_values.each do |v|
         @logger.debug "\tChecking possible value: #{v}"
-        ri = row_contents.select{|rc| rc.possible_values.include? v}.length# == 1 # including ourself
+        ri = row_contents.select{|rc| rc.possible_values.include? v}.length
         @logger.debug "\t#{ri} elegible items in this row."
-        ci = col_contents.select{|cc| cc.possible_values.include? v}.length# == 1 # including ourself
+        ci = col_contents.select{|cc| cc.possible_values.include? v}.length
         @logger.debug "\t#{ci} elegible items in this column."
-        gi = grid_contents.select{|gc| gc.possible_values.include? v}.length# == 1 # including ourself
+        gi = grid_contents.select{|gc| gc.possible_values.include? v}.length
         @logger.debug "\t#{gi} elegible items in this grid."
         if (ri == 1) || (ci == 1) || (gi == 1)
           new_value = v
