@@ -69,7 +69,8 @@ class SudokuPuzzle
     @data.each_with_index do |value,index|
       print_horizontal_line if (index%27 == 0)
       print "| " if (index%3 == 0)
-      print initial_state ? (value.initial_value == 0 ? EMPTY_CHAR : value.initial_value) : value.value
+      char = initial_state ? value.initial_value : value.value
+      print char == 0 ? EMPTY_CHAR : char
       print (index+1)%9==0 ? " |\n" : " "
     end
     print_horizontal_line
