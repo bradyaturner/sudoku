@@ -2,6 +2,7 @@
 
 require 'logger'
 require './loggerconfig'
+require './exceptions'
 
 PUZZLE_WIDTH = 9
 PUZZLE_DISPLAY_WIDTH = 25
@@ -26,7 +27,7 @@ class SudokuValue
   end
 
   def set_value(v)
-    raise "Not possible value! #{v}, #{@possible_values.inspect}" if !@possible_values.include?(v)
+    raise ImpossibleValueError, "Not possible value! #{v}, #{@possible_values.inspect}" if !@possible_values.include?(v)
     @value = v
     @possible_values = [v]
   end
@@ -36,7 +37,7 @@ class SudokuValue
     if @possible_values.length == 1
       @value = @possible_values.first
     elsif @possible_values.length <= 0
-      raise "No possible values!"
+      raise ImpossibleValueError, "No possible values!"
     end
   end
 
@@ -165,12 +166,12 @@ class SudokuSolver
         update_count += check_value_candidates
         @logger.debug "*** update iteration #{@iterations} complete ***"
         if update_count == 0
-          raise "Update iteration ran with no changes made -- puzzle in unsolvable state!!"
+          raise UnsolvableError, "Update iteration ran with no changes made -- puzzle in unsolvable state!!"
         end
         break if @puzzle.solved?
         @iterations += 1
         if @iterations >= MAX_ITERATIONS
-          raise "Could not solve puzzle in #{MAX_ITERATIONS} iterations. LITERALLY UNSOLVABLE!!"
+          raise UnsolvableError, "Could not solve puzzle in #{MAX_ITERATIONS} iterations. LITERALLY UNSOLVABLE!!"
         end
       end
       puts "SOLVED!"
@@ -180,9 +181,10 @@ class SudokuSolver
       @puzzle.print_puzzle
       puts @puzzle.serialize
       puts "Solved in #{@iterations} iterations."
-    rescue => e
+    rescue SudokuError => e
       puts e.message
     end
+    @puzzle.solved?
   end
 
   def update_possible_values
@@ -252,9 +254,24 @@ if __FILE__==$0
     STDERR.puts "USAGE: #{__FILE__} [FILE]"
     exit 0
   end
+
+  time_start = Time.now
   puzzles = SudokuReader.new(ARGV[0]).puzzles
-  puzzles.each do |p|
-    SudokuSolver.new(p).solve
+  num_solved = 0
+  not_solved = []
+  puzzles.each_with_index do |p,i|
+    solved = SudokuSolver.new(p).solve
+    if solved
+      num_solved += 1
+    else
+      not_solved << i
+    end
     puts "\n\n\n"
   end
+  time_finish = Time.now
+
+  puts "RESULTS:"
+  puts "\tSolved #{num_solved} of #{puzzles.length} puzzles."
+  puts "\tTotal time was #{time_finish-time_start} seconds."
+  puts "\tCould not solve the following puzzles: #{not_solved.inspect}"
 end
