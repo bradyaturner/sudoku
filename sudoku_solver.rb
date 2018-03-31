@@ -206,6 +206,16 @@ class SudokuSolver
     @puzzle.print_puzzle
     puts "Gave up after #{@iterations} iterations."
     puts "Numbers remaining: #{@puzzle.remaining_numbers}"
+    print_possible_values
+  end
+
+  def print_possible_values
+    @puzzle.data.each_with_index do |value,index|
+      next if value.solved?
+      row_num = index / 9
+      col_num = index % 9
+      puts "\t(#{row_num},#{col_num}): #{value.possible_values}"
+    end
   end
 
   def update_possible_values
