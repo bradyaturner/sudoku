@@ -51,8 +51,10 @@ end
 class SudokuPuzzle
   attr_reader :data
   def initialize(data)
+    data.delete!("\r\n")
+    raise InputDataError, "Invalid input puzzle size: #{data.length}" if data.length != PUZZLE_WIDTH ** 2
     @data = []
-    data.delete("\r\n").split("").map(&:to_i).each_with_index do |v,i|
+    data.split("").map(&:to_i).each_with_index do |v,i|
       row, col, grid = index_to_coords(i)
       @data << SudokuValue.new(v,row,col,grid)
     end

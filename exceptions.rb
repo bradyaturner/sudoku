@@ -12,3 +12,9 @@ class ImpossibleValueError < SudokuError
     super
   end
 end
+
+class InputDataError < SudokuError
+  def initialize(msg="Invalid input data")
+    super
+  end
+end
