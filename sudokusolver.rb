@@ -8,8 +8,9 @@ require './exceptions'
 
 MAX_ITERATIONS = 1000
 class SudokuSolver
-  def initialize(puzzle)
+  def initialize(puzzle, brute_force=false)
     @puzzle = puzzle
+    @brute_force = brute_force
     @iterations = 0
     @logger = Logger.new(STDERR)
     @logger.level = LoggerConfig::SUDOKUSOLVER_LEVEL
@@ -17,6 +18,7 @@ class SudokuSolver
 
   def solve
     puts "Solving puzzle..."
+    puts "Brute force guessing is *#{@brute_force ? "ON" : "OFF"}*"
     @puzzle.print_puzzle(true)
     begin
       loop do
@@ -25,7 +27,26 @@ class SudokuSolver
         update_count = update_possible_values
         update_count += check_value_candidates
         @logger.debug "*** update iteration #{@iterations} complete ***"
-        if update_count == 0
+        if (update_count == 0) && @brute_force
+          @puzzle.data.each_with_index do |v,index|
+            next if v.solved?
+            row_num = index / 9
+            col_num = index % 9
+            puts "Guessing value for (#{row_num},#{col_num}): #{v.possible_values}"
+            v.possible_values.each do |pv|
+              begin
+                data = @puzzle.serialize
+                data[index] = "#{pv}"
+                new_solver = SudokuSolver.new(SudokuPuzzle.new(data), @brute_force)
+                success = new_solver.solve
+                return true if success
+              rescue ImpossibleValueError # encountering an impossible value when guessing just means it was a bad guess
+              end
+            end
+
+          end
+          raise UnsolvableError, "Could not find a solution even with guessing."
+        elsif update_count == 0
           raise UnsolvableError, "Update iteration ran with no changes made -- puzzle in unsolvable state!!"
         end
         break if @puzzle.solved?
@@ -42,13 +63,13 @@ class SudokuSolver
     @puzzle.solved?
   end
 
-  def print_success
+  def print_success(puzzle=@puzzle)
     puts "SOLVED!"
     puts "Initial state:"
     @puzzle.print_puzzle(true)
     puts "Solution:"
-    @puzzle.print_puzzle
-    puts @puzzle.serialize
+    puzzle.print_puzzle
+    puts puzzle.serialize
     puts "Solved in #{@iterations} iterations."
   end
 
@@ -127,16 +148,17 @@ end
 
 if __FILE__==$0
   if !ARGV[0]
-    STDERR.puts "USAGE: #{__FILE__} [FILE]"
+    STDERR.puts "USAGE: #{__FILE__} [FILE] <brute_force>"
     exit 0
   end
+  brute_force = ARGV[1]
 
   time_start = Time.now
   puzzles = SudokuReader.new(ARGV[0]).puzzles
   num_solved = 0
   not_solved = []
   puzzles.each_with_index do |p,i|
-    solved = SudokuSolver.new(p).solve
+    solved = SudokuSolver.new(p, brute_force).solve
     if solved
       num_solved += 1
     else
