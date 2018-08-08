@@ -155,6 +155,10 @@ class SudokuPuzzle
   def serialize
     @data.collect{|v| v.value}.join
   end
+
+  def serialize_with_candidates
+    @data.collect{|v| v.possible_values.join(',')}.join(";")
+  end
 end
 
 class SudokuReader

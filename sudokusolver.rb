@@ -17,11 +17,13 @@ class SudokuSolver
   end
 
   def apply_rules
-    before_update = @puzzle.serialize
+    before_update = @puzzle.serialize_with_candidates
     update_possible_values
     check_hidden_singles
     update_locked_candidates_1
-    (before_update != @puzzle.serialize)
+    update_locked_candidates_2
+    update_naked_pairs
+    before_update != @puzzle.serialize_with_candidates
   end
 
   def solve
@@ -35,24 +37,7 @@ class SudokuSolver
         was_updated = apply_rules
         @logger.debug "*** update iteration #{@iterations} complete ***"
         if !was_updated && @brute_force
-          @puzzle.data.each_with_index do |v,index|
-            next if v.solved?
-            row_num = index / 9
-            col_num = index % 9
-            puts "Guessing value for (#{row_num},#{col_num}): #{v.possible_values}"
-            v.possible_values.each do |pv|
-              begin
-                data = @puzzle.serialize
-                data[index] = "#{pv}"
-                new_solver = SudokuSolver.new(SudokuPuzzle.new(data), @brute_force)
-                success = new_solver.solve
-                return true if success
-              rescue ImpossibleValueError # encountering an impossible value when guessing just means it was a bad guess
-              end
-            end
-
-          end
-          raise UnsolvableError, "Could not find a solution even with guessing."
+          return brute_force_solve
         elsif !was_updated
           raise UnsolvableError, "Update iteration ran with no changes made -- puzzle in unsolvable state!!"
         end
@@ -68,6 +53,26 @@ class SudokuSolver
       print_failure
     end
     @puzzle.solved?
+  end
+
+  def brute_force_solve
+    @puzzle.data.each_with_index do |v,index|
+      next if v.solved?
+      row_num = index / 9
+      col_num = index % 9
+      puts "Guessing value for (#{row_num},#{col_num}): #{v.possible_values}"
+      v.possible_values.each do |pv|
+        begin
+          data = @puzzle.serialize
+          data[index] = "#{pv}"
+          new_solver = SudokuSolver.new(SudokuPuzzle.new(data), @brute_force)
+          success = new_solver.solve
+          return true if success
+          rescue ImpossibleValueError # encountering an impossible value when guessing just means it was a bad guess
+        end
+      end
+    end
+    raise UnsolvableError, "Could not find a solution even with guessing."
   end
 
   # for each unsolved cell, look at its groups to see if it is the
@@ -142,6 +147,73 @@ class SudokuSolver
             end
           end
         end
+      end
+    end
+  end
+
+  # for each unsolved cell, see if its candidate values exist only in its grid, for its row or column
+  # if so, then that candidate can be removed from all other cells in the grid outside the row or column
+  def update_locked_candidates_2
+    @logger.debug "Applying rule: Locked Candidates 2"
+    @puzzle.data.each do |cell|
+      next if cell.solved?
+      row, col, grid = get_groups cell
+
+      cell.possible_values.each do |v|
+        ri = row.select{|rc| grid.include?(rc)}.select{|rc| rc.possible_values.include? v}.length
+        ci = col.select{|cc| grid.include?(cc)}.select{|cc| cc.possible_values.include? v}.length
+        gi = grid.select{|gc| gc.possible_values.include? v}.length
+
+        if (gi == ri)
+          grid.each do |cell2|
+            if !row.include?(cell2) && !cell2.solved?
+              cell2.remove_possible_values [v]
+            end
+          end
+        elsif (gi == ci)
+          grid.each do |cell2|
+            if !col.include?(cell2) && !cell2.solved?
+              cell2.remove_possible_values [v]
+            end
+          end
+        end
+      end
+    end
+  end
+
+  def update_naked_pairs
+    @logger.info "Applying rule: Naked Pairs"
+    @puzzle.data.each do |cell|
+      next if cell.solved?
+      next if cell.possible_values.length != 2
+      row, col, grid = get_groups cell
+      ri = row.select{|rc| rc.possible_values == cell.possible_values}
+      ci = col.select{|cc| cc.possible_values == cell.possible_values}
+      gi = grid.select{|gc| gc.possible_values == cell.possible_values}
+
+      group = nil
+      pairs = nil
+      if ri.length == 2 # row pairs
+#        print_possible_values
+        @logger.info "Found row naked pair at (#{ri.first.row_num},#{ri.first.col_num}) and (#{ri.last.row_num},#{ri.last.col_num}) for values #{cell.possible_values.inspect}"
+        group = row
+        pairs = ri
+      elsif ci.length == 2 # col pairs
+#        print_possible_values
+        @logger.info "Found col naked pair at (#{ri.first.row_num},#{ri.first.col_num}) and (#{ri.last.row_num},#{ri.last.col_num}) for values #{cell.possible_values.inspect}"
+        group = col
+        pairs = ci
+      elsif gi.length == 2 # grid pairs
+#        print_possible_values
+        @logger.info "Found grid naked pair at (#{ri.first.row_num},#{ri.first.col_num}) and (#{ri.last.row_num},#{ri.last.col_num}) for values #{cell.possible_values.inspect}"
+        group = grid
+        pairs = gi
+      end
+      if group
+        group.select{|c|!pairs.include?(c) && !c.solved?}.each do |cell2|
+          cell2.remove_possible_values cell.possible_values
+        end
+#        print_possible_values
       end
     end
   end
