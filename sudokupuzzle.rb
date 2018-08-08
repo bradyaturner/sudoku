@@ -11,14 +11,17 @@ EMPTY_CHAR = "-"
 class SudokuValue
   attr_reader :value, :initial_value, :possible_values, :row_num,
     :col_num, :grid_num
-  def initialize(initial_value, row_num, col_num, grid_num)
+  def initialize(initial_value, row_num, col_num, grid_num, possible_values=nil)
     @initial_value = initial_value
     @value = initial_value
     @row_num = row_num
     @col_num = col_num
     @grid_num = grid_num
-    if @initial_value == 0
+    if @initial_value == 0 && possible_values == nil
       @possible_values = Array.new(SORTED_NUMBERS)
+    elsif @initial_value == 0
+      @possible_values = possible_values
+      @initial_value = @value = @possible_values.first if @possible_values.length == 1
     else
       @possible_values = [initial_value]
     end
@@ -32,6 +35,15 @@ class SudokuValue
     raise ImpossibleValueError, "Not possible value! #{v}, #{@possible_values.inspect}" if !@possible_values.include?(v)
     @value = v
     @possible_values = [v]
+  end
+
+  def set_possible_values(pv)
+    @possible_values = pv
+    if @possible_values.length == 1
+      @value = @possible_values.first
+    else
+      @value = @initial_value
+    end
   end
 
   def remove_possible_values(values)
@@ -50,13 +62,29 @@ end
 
 class SudokuPuzzle
   attr_reader :data
-  def initialize(data)
-    data.delete!("\r\n")
-    raise InputDataError, "Invalid input puzzle size: #{data.length}" if data.length != PUZZLE_WIDTH ** 2
+  def initialize(data, with_candidates=false)
     @data = []
+    data.delete!("\r\n")
+    if !with_candidates
+    raise InputDataError, "Invalid input puzzle size: #{data.length}" if data.length != PUZZLE_WIDTH ** 2
+      import_puzzle data
+    else
+      import_with_candidates data
+    end
+  end
+
+  def import_puzzle(data)
     data.split("").map(&:to_i).each_with_index do |v,i|
       row, col, grid = index_to_coords(i)
       @data << SudokuValue.new(v,row,col,grid)
+    end
+  end
+
+  def import_with_candidates(data)
+    data.split(";").each_with_index do |v,i|
+      row, col, grid = index_to_coords i
+      values = v.split(',').map(&:to_i)
+      @data << SudokuValue.new(0,row,col,grid,values)
     end
   end
 
