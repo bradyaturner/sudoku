@@ -16,6 +16,14 @@ class SudokuSolver
     @logger.level = LoggerConfig::SUDOKUSOLVER_LEVEL
   end
 
+  def apply_rules
+    before_update = @puzzle.serialize
+    update_possible_values
+    check_hidden_singles
+    update_locked_candidates_1
+    (before_update != @puzzle.serialize)
+  end
+
   def solve
     puts "Solving puzzle..."
     puts "Brute force guessing is *#{@brute_force ? "ON" : "OFF"}*"
@@ -24,10 +32,9 @@ class SudokuSolver
       loop do
         break if @puzzle.solved? # need to check first for already-solved puzzles
         @logger.debug "*** beginning update iteration #{@iterations} ***"
-        update_count = update_possible_values
-        update_count += check_value_candidates
+        was_updated = apply_rules
         @logger.debug "*** update iteration #{@iterations} complete ***"
-        if (update_count == 0) && @brute_force
+        if !was_updated && @brute_force
           @puzzle.data.each_with_index do |v,index|
             next if v.solved?
             row_num = index / 9
@@ -46,7 +53,7 @@ class SudokuSolver
 
           end
           raise UnsolvableError, "Could not find a solution even with guessing."
-        elsif update_count == 0
+        elsif !was_updated
           raise UnsolvableError, "Update iteration ran with no changes made -- puzzle in unsolvable state!!"
         end
         break if @puzzle.solved?
@@ -63,6 +70,90 @@ class SudokuSolver
     @puzzle.solved?
   end
 
+  # for each unsolved cell, look at its groups to see if it is the
+  # only resident containing a specific candidate value
+  def check_hidden_singles
+    @puzzle.data.each do |cell|
+      next if cell.solved?
+      @logger.debug cell.to_s
+      row, col, grid = get_groups cell
+
+      new_value = nil
+      cell.possible_values.each do |v|
+        @logger.debug "\tChecking possible value: #{v}"
+        ri = row.select{|rc| rc.possible_values.include? v}.length
+        @logger.debug "\t#{ri} elegible items in this row."
+        ci = col.select{|cc| cc.possible_values.include? v}.length
+        @logger.debug "\t#{ci} elegible items in this column."
+        gi = grid.select{|gc| gc.possible_values.include? v}.length
+        @logger.debug "\t#{gi} elegible items in this grid."
+        if (ri == 1) || (ci == 1) || (gi == 1)
+          new_value = v
+          break
+        end
+      end
+      if !new_value.nil?
+        cell.set_value(new_value)
+      end
+    end
+  end
+
+  # for each unsolved cell, remove candidate values for all solved cells in its groups
+  def update_possible_values
+    @puzzle.data.each do |value|
+      next if value.solved?
+      @logger.debug value.to_s
+
+      row_contents = @puzzle.get_row_values value.row_num
+      col_contents = @puzzle.get_column_values value.col_num
+      grid_contents = @puzzle.get_grid_values value.grid_num
+      excluded = (row_contents + col_contents + grid_contents - [0]).uniq
+
+      if (value.possible_values & excluded).length > 0
+        value.remove_possible_values(excluded)
+      end
+      @logger.debug "\tPossible: #{value.possible_values}#{value.solved? ? " (solved)" : ""}"
+    end
+  end
+
+  # for each unsolved cell, see if its candidate values exist only in its row or column, for its grid
+  # if so, then that candidate can be removed from all other cells in the row or column outside the grid
+  def update_locked_candidates_1
+    @logger.debug "Applying rule: Locked Candidates 1"
+    @puzzle.data.each do |cell|
+      next if cell.solved?
+      row, col, grid = get_groups cell
+
+      cell.possible_values.each do |v|
+        ri = row.select{|rc| grid.include?(rc)}.select{|rc| rc.possible_values.include? v}.length
+        ci = col.select{|cc| grid.include?(cc)}.select{|cc| cc.possible_values.include? v}.length
+        gi = grid.select{|gc| gc.possible_values.include? v}.length
+
+        if (gi == ri)
+          row.each do |cell2|
+            if !grid.include?(cell2) && !cell2.solved?
+              cell2.remove_possible_values [v]
+            end
+          end
+        elsif (gi == ci)
+          col.each do |cell2|
+            if !grid.include?(cell2) && !cell2.solved?
+              cell2.remove_possible_values [v]
+            end
+          end
+        end
+      end
+    end
+  end
+
+  def get_groups(cell)
+    row = @puzzle.get_row cell.row_num
+    col = @puzzle.get_column cell.col_num
+    grid = @puzzle.get_grid cell.grid_num
+    [row, col, grid]
+  end
+
+# output methods
   def print_success(puzzle=@puzzle)
     puts "SOLVED!"
     puts "Initial state:"
@@ -91,58 +182,6 @@ class SudokuSolver
       col_num = index % 9
       puts "\t(#{row_num},#{col_num}): #{value.possible_values}"
     end
-  end
-
-  def update_possible_values
-    update_count = 0
-    @puzzle.data.each_with_index do |value,index|
-      next if value.solved?
-      @logger.debug value.to_s
-
-      row_contents = @puzzle.get_row_values value.row_num
-      col_contents = @puzzle.get_column_values value.col_num
-      grid_contents = @puzzle.get_grid_values value.grid_num
-      excluded = (row_contents + col_contents + grid_contents - [0]).uniq
-
-      if (value.possible_values & excluded).length > 0
-        update_count += 1
-        value.remove_possible_values(excluded)
-      end
-      @logger.debug "\tPossible: #{value.possible_values}#{value.solved? ? " (solved)" : ""}"
-    end
-    update_count
-  end
-
-  def check_value_candidates
-    update_count = 0
-    @puzzle.data.each_with_index do |value,index|
-      next if value.solved?
-      @logger.debug value.to_s
-
-      row_contents = @puzzle.get_row value.row_num
-      col_contents = @puzzle.get_column value.col_num
-      grid_contents = @puzzle.get_grid value.grid_num
-
-      new_value = nil
-      value.possible_values.each do |v|
-        @logger.debug "\tChecking possible value: #{v}"
-        ri = row_contents.select{|rc| rc.possible_values.include? v}.length
-        @logger.debug "\t#{ri} elegible items in this row."
-        ci = col_contents.select{|cc| cc.possible_values.include? v}.length
-        @logger.debug "\t#{ci} elegible items in this column."
-        gi = grid_contents.select{|gc| gc.possible_values.include? v}.length
-        @logger.debug "\t#{gi} elegible items in this grid."
-        if (ri == 1) || (ci == 1) || (gi == 1)
-          new_value = v
-          break
-        end
-      end
-      if !new_value.nil?
-        value.set_value(new_value)
-        update_count += 1
-      end
-    end
-    update_count
   end
 end
 
