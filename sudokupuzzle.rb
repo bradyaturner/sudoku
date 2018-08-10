@@ -1,4 +1,7 @@
 require './exceptions'
+require './loggerconfig'
+
+require 'logger'
 
 # not sure everything works with other sizes
 PUZZLE_WIDTH = 9
@@ -8,7 +11,7 @@ PUZZLE_DISPLAY_WIDTH = 25
 SORTED_NUMBERS = [1,2,3,4,5,6,7,8,9]
 EMPTY_CHAR = "-"
 
-class SudokuValue
+class SudokuCell
   attr_reader :value, :initial_value, :possible_values, :row_num,
     :col_num, :grid_num
   def initialize(initial_value, row_num, col_num, grid_num, possible_values=nil)
@@ -25,6 +28,8 @@ class SudokuValue
     else
       @possible_values = [initial_value]
     end
+    @logger = Logger.new(STDERR)
+    @logger.level = LoggerConfig::SUDOKUCELL_LEVEL
   end
 
   def solved?
@@ -51,6 +56,7 @@ class SudokuValue
     if @possible_values.length == 1
       @value = @possible_values.first
     elsif @possible_values.length <= 0
+      @logger.debug "Attempting to remove candidate values #{values.inspect} from cell (#{@row_num},#{@col_num})"
       raise ImpossibleValueError, "No possible values!"
     end
   end
@@ -76,7 +82,7 @@ class SudokuPuzzle
   def import_puzzle(data)
     data.split("").map(&:to_i).each_with_index do |v,i|
       row, col, grid = index_to_coords(i)
-      @data << SudokuValue.new(v,row,col,grid)
+      @data << SudokuCell.new(v,row,col,grid)
     end
   end
 
@@ -84,7 +90,7 @@ class SudokuPuzzle
     data.split(";").each_with_index do |v,i|
       row, col, grid = index_to_coords i
       values = v.split(',').map(&:to_i)
-      @data << SudokuValue.new(0,row,col,grid,values)
+      @data << SudokuCell.new(0,row,col,grid,values)
     end
   end
 

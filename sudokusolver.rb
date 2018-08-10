@@ -58,16 +58,18 @@ class SudokuSolver
   def brute_force_solve
     @puzzle.data.each_with_index do |v,index|
       next if v.solved?
-      puts "Guessing value for (#{v.row_num},#{v.col_num}): #{v.possible_values}"
+      @logger.info "Guessing values for (#{v.row_num},#{v.col_num}): #{v.possible_values}"
       pos_values = v.possible_values
       pos_values.each do |pv|
         begin
+          @logger.info "Guessing value for (#{v.row_num},#{v.col_num}): #{v.possible_values}: (#{pv})"
           v.set_value pv
           data = @puzzle.serialize_with_candidates
           new_solver = SudokuSolver.new(SudokuPuzzle.new(data, true), @brute_force)
           success = new_solver.solve
           return true if success
         rescue ImpossibleValueError => e # encountering an impossible value when guessing just means it was a bad guess
+          @logger.info "Guessing value FAILED: (#{v.row_num},#{v.col_num}): #{v.possible_values}: (#{pv})"
           v.set_possible_values pos_values
         end
       end
