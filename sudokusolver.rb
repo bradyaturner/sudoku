@@ -23,6 +23,7 @@ class SudokuSolver
     update_locked_candidates_1
     update_locked_candidates_2
     update_naked_pairs
+    update_hidden_pairs
     before_update != @puzzle.serialize_with_candidates
   end
 
@@ -58,18 +59,18 @@ class SudokuSolver
   def brute_force_solve
     @puzzle.data.each_with_index do |v,index|
       next if v.solved?
-      @logger.info "Guessing values for (#{v.row_num},#{v.col_num}): #{v.possible_values}"
+      @logger.info "Guessing values for (#{v.row},#{v.col}): #{v.possible_values}"
       pos_values = v.possible_values
       pos_values.each do |pv|
         begin
-          @logger.info "Guessing value for (#{v.row_num},#{v.col_num}): #{v.possible_values}: (#{pv})"
+          @logger.info "Guessing value for (#{v.row},#{v.col}): #{v.possible_values}: (#{pv})"
           v.set_value pv
           data = @puzzle.serialize_with_candidates
           new_solver = SudokuSolver.new(SudokuPuzzle.new(data, true), @brute_force)
           success = new_solver.solve
           return true if success
         rescue ImpossibleValueError => e # encountering an impossible value when guessing just means it was a bad guess
-          @logger.info "Guessing value FAILED: (#{v.row_num},#{v.col_num}): #{v.possible_values}: (#{pv})"
+          @logger.info "Guessing value FAILED: (#{v.row},#{v.col}): #{v.possible_values}: (#{pv})"
           v.set_possible_values pos_values
         end
       end
@@ -111,9 +112,9 @@ class SudokuSolver
       next if value.solved?
       @logger.debug value.to_s
 
-      row_contents = @puzzle.get_row_values value.row_num
-      col_contents = @puzzle.get_column_values value.col_num
-      grid_contents = @puzzle.get_grid_values value.grid_num
+      row_contents = @puzzle.get_row_values value.row
+      col_contents = @puzzle.get_column_values value.col
+      grid_contents = @puzzle.get_grid_values value.grid
       excluded = (row_contents + col_contents + grid_contents - [0]).uniq
 
       if (value.possible_values & excluded).length > 0
@@ -193,37 +194,85 @@ class SudokuSolver
       ci = col.select{|cc| cc.possible_values == cell.possible_values}
       gi = grid.select{|gc| gc.possible_values == cell.possible_values}
 
-      group = nil
-      pairs = nil
       if ri.length == 2 # row pairs
-#        print_possible_values
-        @logger.info "Found row naked pair at (#{ri.first.row_num},#{ri.first.col_num}) and (#{ri.last.row_num},#{ri.last.col_num}) for values #{cell.possible_values.inspect}"
-        group = row
-        pairs = ri
-      elsif ci.length == 2 # col pairs
-#        print_possible_values
-        @logger.info "Found col naked pair at (#{ri.first.row_num},#{ri.first.col_num}) and (#{ri.last.row_num},#{ri.last.col_num}) for values #{cell.possible_values.inspect}"
-        group = col
-        pairs = ci
-      elsif gi.length == 2 # grid pairs
-#        print_possible_values
-        @logger.info "Found grid naked pair at (#{ri.first.row_num},#{ri.first.col_num}) and (#{ri.last.row_num},#{ri.last.col_num}) for values #{cell.possible_values.inspect}"
-        group = grid
-        pairs = gi
-      end
-      if group
-        group.select{|c|!pairs.include?(c) && !c.solved?}.each do |cell2|
+        @logger.info "Found row naked pair at (#{ri.first.row},#{ri.first.col}) and (#{ri.last.row},#{ri.last.col}) for values #{cell.possible_values.inspect}"
+        row.select{|c|!ri.include?(c) && !c.solved?}.each do |cell2|
           cell2.remove_possible_values cell.possible_values
         end
-#        print_possible_values
+      end
+
+      if ci.length == 2 # col pairs
+        @logger.info "Found col naked pair at (#{ci.first.row},#{ci.first.col}) and (#{ci.last.row},#{ci.last.col}) for values #{cell.possible_values.inspect}"
+        col.select{|c|!ci.include?(c) && !c.solved?}.each do |cell2|
+          cell2.remove_possible_values cell.possible_values
+        end
+      end
+
+      if gi.length == 2 # grid pairs
+        @logger.info "Found grid naked pair at (#{gi.first.row},#{gi.first.col}) and (#{gi.last.row},#{gi.last.col}) for values #{cell.possible_values.inspect}"
+        grid.select{|c|!gi.include?(c) && !c.solved?}.each do |cell2|
+          cell2.remove_possible_values cell.possible_values
+        end
       end
     end
   end
 
-  def get_groups(cell)
-    row = @puzzle.get_row cell.row_num
-    col = @puzzle.get_column cell.col_num
-    grid = @puzzle.get_grid cell.grid_num
+  # TODO cannot do this as a batch -- removing candidates after pairs have been calculated DOES NOT WORK!
+  # refactor this to be a single iteration that works on any group type
+
+  def update_hidden_pairs
+    @logger.info "Applying rule: Hidden Pairs"
+    @puzzle.data.each do |cell|
+      next if cell.solved?
+      next if cell.possible_values.length < 2
+      row, col, grid = get_groups(cell, false)
+      ri = row.select do |pc|
+        overlap = pc.possible_values & cell.possible_values
+        puts "OVERLAP: (#{cell.row},#{cell.col}) , (#{pc.row},#{pc.col}) #{overlap.inspect}"
+        other_cells = row.select{|c| c!=pc}.select{|c| (c.possible_values & overlap) == overlap}
+        overlap.length == 2 && other_cells.length == 0
+      end
+      ci = col.select do |pc|
+        overlap = pc.possible_values & cell.possible_values
+        other_cells = col.select{|c| c!=pc}.select{|c| (c.possible_values & overlap) == overlap}
+        overlap.length == 2 && other_cells.length == 0
+      end
+      gi = grid.select do |pc|
+        overlap = pc.possible_values & cell.possible_values
+        other_cells = grid.select{|c| c!=pc}.select{|c| (c.possible_values & overlap) == overlap}
+        overlap.length == 2 && other_cells.length == 0
+      end
+
+      ri.each do |rp| # row pairs
+        @puzzle.print_puzzle
+        print_possible_values
+        pvs = rp.possible_values & cell.possible_values
+        @logger.info "Found row hidden pair at (#{cell.row},#{cell.col}) and (#{rp.row},#{rp.col}) for values #{pvs.inspect}"
+        [cell, rp].each {|c2| c2.remove_possible_values(SORTED_NUMBERS-pvs) } # "remove all except" not the same operation as "set possible values"
+      end
+
+      ci.each do |cp| # col pairs
+        @puzzle.print_puzzle
+        print_possible_values
+        pvs = cell.possible_values & cp.possible_values
+        @logger.info "Found col hidden pair at (#{cell.row},#{cell.col}) and (#{cp.row},#{cp.col}) for values #{pvs.inspect}"
+        [cell, cp].each {|c2| c2.remove_possible_values(SORTED_NUMBERS-pvs) }
+      end
+
+      gi.each do |gp| # grid pairs
+        @puzzle.print_puzzle
+        print_possible_values
+        pvs = cell.possible_values & gp.possible_values
+        @logger.info "Found grid hidden pair at (#{cell.row},#{cell.col}) and (#{gp.row},#{gp.col}) for values #{pvs.inspect}"
+        gi.each {|c2| c2.remove_possible_values(SORTED_NUMBERS-pvs) }
+      end
+    end
+  end
+
+  def get_groups(cell, include_self=true)
+    row = @puzzle.get_row(cell.row).select{|c| !include_self ? c!=cell : true }
+    col = @puzzle.get_column(cell.col).select{|c| !include_self ? c!=cell : true}
+    grid = @puzzle.get_grid(cell.grid).select{|c| !include_self ? c!=cell : true}
     [row, col, grid]
   end
 
@@ -252,9 +301,7 @@ class SudokuSolver
   def print_possible_values
     @puzzle.data.each_with_index do |value,index|
       next if value.solved?
-      row_num = index / 9
-      col_num = index % 9
-      puts "\t(#{row_num},#{col_num}): #{value.possible_values}"
+      puts "\t(#{value.row},#{value.col}): #{value.possible_values}"
     end
   end
 end

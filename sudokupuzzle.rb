@@ -12,14 +12,14 @@ SORTED_NUMBERS = [1,2,3,4,5,6,7,8,9]
 EMPTY_CHAR = "-"
 
 class SudokuCell
-  attr_reader :value, :initial_value, :possible_values, :row_num,
-    :col_num, :grid_num
-  def initialize(initial_value, row_num, col_num, grid_num, possible_values=nil)
+  attr_reader :value, :initial_value, :possible_values, :row,
+    :col, :grid
+  def initialize(initial_value, row, col, grid, possible_values=nil)
     @initial_value = initial_value
     @value = initial_value
-    @row_num = row_num
-    @col_num = col_num
-    @grid_num = grid_num
+    @row = row
+    @col = col
+    @grid = grid
     if @initial_value == 0 && possible_values == nil
       @possible_values = Array.new(SORTED_NUMBERS)
     elsif @initial_value == 0
@@ -30,6 +30,14 @@ class SudokuCell
     end
     @logger = Logger.new(STDERR)
     @logger.level = LoggerConfig::SUDOKUCELL_LEVEL
+  end
+
+  def ==(b)
+    @value == b.value &&
+      @row == b.row &&
+      @col == b.col &&
+      @grid == b.grid &&
+      @possible_values == b.possible_values
   end
 
   def solved?
@@ -52,17 +60,21 @@ class SudokuCell
   end
 
   def remove_possible_values(values)
+    if @row == 8 && @col == 4 && values.include?(3)
+      puts "TRYING TO REMOVE '3' from (8,4)"
+      exit
+    end
     @possible_values -= values
     if @possible_values.length == 1
       @value = @possible_values.first
     elsif @possible_values.length <= 0
-      @logger.debug "Attempting to remove candidate values #{values.inspect} from cell (#{@row_num},#{@col_num})"
+      @logger.debug "Attempting to remove candidate values #{values.inspect} from cell (#{@row},#{@col})"
       raise ImpossibleValueError, "No possible values!"
     end
   end
 
   def to_s
-    "Value #{value} at pos (#{row_num},#{col_num}) in grid ##{grid_num}"
+    "Cell containing #{@value} at pos (#{@row},#{@col}) in grid ##{@grid}"
   end
 end
 
