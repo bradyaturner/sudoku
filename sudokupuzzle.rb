@@ -60,10 +60,7 @@ class SudokuCell
   end
 
   def remove_possible_values(values)
-    if @row == 8 && @col == 4 && values.include?(3)
-      puts "TRYING TO REMOVE '3' from (8,4)"
-      exit
-    end
+    @logger.debug "remove_possible_values: #{values.inspect}"
     @possible_values -= values
     if @possible_values.length == 1
       @value = @possible_values.first
