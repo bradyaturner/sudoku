@@ -50,21 +50,25 @@ class SudokuCell
     @possible_values = [v]
   end
 
+  # TODO get rid of this method, shouldn't be exposed outside this class
+  # need it now for resetting state when coming out of recursive call for brute forcing
   def set_possible_values(pv)
     @possible_values = pv
+    @value = @initial_value
+  end
+
+  def update_value
     if @possible_values.length == 1
       @value = @possible_values.first
-    else
-      @value = @initial_value
     end
   end
+
+  def remove_possible_value(v) remove_possible_values [v] end
 
   def remove_possible_values(values)
     @logger.debug "remove_possible_values: #{values.inspect}"
     @possible_values -= values
-    if @possible_values.length == 1
-      @value = @possible_values.first
-    elsif @possible_values.length <= 0
+    if @possible_values.length <= 0
       @logger.debug "Attempting to remove candidate values #{values.inspect} from cell (#{@row},#{@col})"
       raise ImpossibleValueError, "No possible values!"
     end

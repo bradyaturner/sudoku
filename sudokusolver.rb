@@ -7,6 +7,15 @@ require './loggerconfig'
 require './exceptions'
 
 MAX_ITERATIONS = 1000
+
+RULES = [
+  :hidden_singles,
+  :locked_candidates_1,
+  :locked_candidates_2,
+  :naked_pairs,
+  :hidden_pairs
+]
+
 class SudokuSolver
   def initialize(puzzle, brute_force=false)
     @puzzle = puzzle
@@ -16,15 +25,28 @@ class SudokuSolver
     @logger.level = LoggerConfig::SUDOKUSOLVER_LEVEL
   end
 
-  def apply_rules
+  def apply_rules_old
     before_update = @puzzle.serialize_with_candidates
     update_possible_values
-    check_hidden_singles
-    update_locked_candidates_1
-    update_locked_candidates_2
-    update_naked_pairs
-#    update_hidden_pairs
+    hidden_singles
+    locked_candidates_1
+    locked_candidates_2
+    naked_pairs
+    hidden_pairs
     before_update != @puzzle.serialize_with_candidates
+  end
+
+  def apply_rules
+    state_before_update = @puzzle.serialize_with_candidates
+
+    update_possible_values
+    RULES.each do |rule|
+      send rule
+      # TODO run this every time a candidate value changes, not just after every rule application
+      update_possible_values
+      singles
+    end
+    state_before_update != @puzzle.serialize_with_candidates
   end
 
   def solve
@@ -80,7 +102,7 @@ class SudokuSolver
 
   # for each unsolved cell, look at its groups to see if it is the
   # only resident containing a specific candidate value
-  def check_hidden_singles
+  def hidden_singles
     @puzzle.data.each do |cell|
       next if cell.solved?
       @logger.debug cell.to_s
@@ -102,31 +124,51 @@ class SudokuSolver
       end
       if !new_value.nil?
         cell.set_value(new_value)
+        remove_candidate_from_cell_groups(cell, new_value)
+      end
+    end
+  end
+
+  # for each unsolved cell, assign values to any who have only one candidate value
+  def singles
+    @puzzle.data.each do |cell|
+      next if cell.solved?
+      @logger.debug cell.to_s
+      if v = cell.update_value
+        remove_candidate_from_cell_groups(cell, v)
+      end
+    end
+  end
+
+  def remove_candidate_from_cell_groups(cell, value)
+    @logger.debug "Removing value #{value} from all groups for cell (#{cell.row},#{cell.col})."
+    groups = get_groups cell, false
+    groups.each do |group|
+      group.each do |c|
+        c.remove_possible_value value
       end
     end
   end
 
   # for each unsolved cell, remove candidate values for all solved cells in its groups
   def update_possible_values
-    @puzzle.data.each do |value|
-      next if value.solved?
-      @logger.debug value.to_s
+    @puzzle.data.each do |cell|
+      next if cell.solved?
+      @logger.debug cell.to_s
 
-      row_contents = @puzzle.get_row_values value.row
-      col_contents = @puzzle.get_column_values value.col
-      grid_contents = @puzzle.get_grid_values value.grid
-      excluded = (row_contents + col_contents + grid_contents - [0]).uniq
+      groups_content = get_groups(cell).flatten.collect{|gi| gi.value}
+      excluded = (groups_content - [0]).uniq
 
-      if (value.possible_values & excluded).length > 0
-        value.remove_possible_values(excluded)
+      if (cell.possible_values & excluded).length > 0
+        cell.remove_possible_values(excluded)
       end
-      @logger.debug "\tPossible: #{value.possible_values}#{value.solved? ? " (solved)" : ""}"
+      @logger.debug "\tPossible: #{cell.possible_values}#{cell.solved? ? " (solved)" : ""}"
     end
   end
 
   # for each unsolved cell, see if its candidate values exist only in its row or column, for its grid
   # if so, then that candidate can be removed from all other cells in the row or column outside the grid
-  def update_locked_candidates_1
+  def locked_candidates_1
     @logger.debug "Applying rule: Locked Candidates 1"
     @puzzle.data.each do |cell|
       next if cell.solved?
@@ -156,7 +198,7 @@ class SudokuSolver
 
   # for each unsolved cell, see if its candidate values exist only in its grid, for its row or column
   # if so, then that candidate can be removed from all other cells in the grid outside the row or column
-  def update_locked_candidates_2
+  def locked_candidates_2
     @logger.debug "Applying rule: Locked Candidates 2"
     @puzzle.data.each do |cell|
       next if cell.solved?
@@ -184,7 +226,7 @@ class SudokuSolver
     end
   end
 
-  def update_naked_pairs
+  def naked_pairs
     @logger.info "Applying rule: Naked Pairs"
     @puzzle.data.each do |cell|
       next if cell.solved?
@@ -205,7 +247,7 @@ class SudokuSolver
 
   # TODO cannot do this as a batch -- removing candidates after pairs have been calculated DOES NOT WORK!
   # refactor this to be a single iteration that works on any group type
-  def update_hidden_pairs
+  def hidden_pairs
     @logger.info "Applying rule: Hidden Pairs"
     @puzzle.data.each do |cell|
       next if cell.solved?
