@@ -24,6 +24,19 @@ class SudokuSolver
     @iterations = 0
     @logger = Logger.new(STDERR)
     @logger.level = LoggerConfig::SUDOKUSOLVER_LEVEL
+    @stats = {}
+  end
+
+  def update_stats(rule, changed)
+    initialize_stats(rule) if !@stats[rule]
+    @stats[rule][:invocation_count] += 1
+    @stats[rule][:invocations_no_effect] += 1 if changed
+  end
+
+  def initialize_stats(rule)
+    @stats[rule] = {}
+    @stats[rule][:invocation_count] = 0
+    @stats[rule][:invocations_no_effect] = 0
   end
 
   def apply_rules
@@ -37,10 +50,11 @@ class SudokuSolver
     state_before_update != @puzzle.serialize_with_candidates
   end
 
-  def apply_rule(rule)
+  def apply_rule(rule, *args)
     before = @puzzle.serialize_with_candidates
-    send rule
+    send rule, *args
     changed = (before == @puzzle.serialize_with_candidates)
+    update_stats(rule, changed)
     @logger.info "Application of rule #{rule} did #{changed ? "":"not "}advance state."
     changed
   end
@@ -112,7 +126,7 @@ class SudokuSolver
         end
         if value
           cell.set_value(value)
-          remove_candidate_from_cell_groups(cell, value)
+          apply_rule(:remove_candidate_from_cell_groups, cell, value)
           break
         end
       end
@@ -126,17 +140,14 @@ class SudokuSolver
       next if cell.solved?
       @logger.debug cell.to_s
       if v = cell.update_value
-        remove_candidate_from_cell_groups(cell, v)
+        apply_rule(:remove_candidate_from_cell_groups, cell, v)
       end
     end
   end
 
   def remove_candidate_from_cell_groups(cell, value)
     @logger.debug "Removing value #{value} from all groups for cell (#{cell.row},#{cell.col})."
-    groups = get_groups cell
-    groups.flatten.each do |c|
-      c.remove_candidate value
-    end
+    get_groups(cell).flatten.each { |c| c.remove_candidate value }
   end
 
   # for each unsolved cell, remove candidate values for all solved cells in its groups
@@ -204,9 +215,10 @@ class SudokuSolver
 
   def check_group_naked_pairs(cell, group)
     gi = group.select{|gc| gc.candidates == cell.candidates}
-    if gi.length == 2
-      @logger.info "Found naked pair at (#{gi.first.row},#{gi.first.col}) and (#{gi.last.row},#{gi.last.col}) for values #{cell.candidates.inspect}"
-      group.select{|c|!gi.include?(c) && !c.solved?}.each do |cell2|
+    if gi.length == 1
+      cell2 = gi.first
+      @logger.info "Found naked pair at (#{cell2.row},#{cell2.col}) and (#{cell.row},#{cell.col}) for values #{cell.candidates.inspect}"
+      (group - [cell, cell2]).select{|c|!c.solved?}.each do |cell2|
         cell2.remove_candidates cell.candidates
       end
     end
@@ -249,6 +261,7 @@ class SudokuSolver
     puzzle.print_puzzle
     puts puzzle.serialize
     puts "Solved in #{@iterations} iterations."
+    print_rule_stats
   end
 
   def print_failure
@@ -266,6 +279,13 @@ class SudokuSolver
     @puzzle.cells.each do |value|
       next if value.solved?
       puts "\t(#{value.row},#{value.col}): #{value.candidates}"
+    end
+  end
+
+  def print_rule_stats
+    puts "Rule stats:"
+    @stats.each do |rule, stats|
+      puts "\t#{rule}:: Invoked: #{stats[:invocation_count]} times, Invoked w/ no effect: #{stats[:invocations_no_effect]} times."
     end
   end
 end
