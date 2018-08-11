@@ -14,7 +14,7 @@ RULES = [
   :locked_candidates_1,
   :locked_candidates_2,
   :naked_pairs,
-#  :hidden_pairs
+  :hidden_pairs
 ]
 
 class SudokuSolver
@@ -224,24 +224,22 @@ class SudokuSolver
     end
   end
 
-  # TODO cannot do this as a batch -- removing candidates after pairs have been calculated DOES NOT WORK!
-  # refactor this to be a single iteration that works on any group type
   def hidden_pairs
     @logger.info "Applying rule: Hidden Pairs"
     @puzzle.cells.each do |cell|
       next if cell.solved?
       next if cell.candidates.length < 2
-      get_groups(cell).each {|g| check_group_hidden_pairs(cell, g)}
-    end
-  end
-
-  def check_group_hidden_pairs(cell, group)
-    gi = group.select do |pc|
-      pvs = pc.candidates & cell.candidates
-      other_cells = group.select{|c| c!=pc}.select{|c| (c.candidates & pvs) == pvs}
-      next if !(pvs.length == 2 && other_cells.length == 0)
-      @logger.info "Found hidden pair at (#{cell.row},#{cell.col}) and (#{pc.row},#{pc.col}) for values #{pvs.inspect}"
-      [cell, pc].each {|c2| c2.remove_candidates(SORTED_NUMBERS-pvs) }
+      get_groups(cell).each do |group|
+        group.each do |cell2|
+          overlap = cell.candidates & cell2.candidates
+          if overlap.length == 2
+            group_candidates = (group - [cell, cell2]).collect{|c| c.candidates}.flatten
+            if (overlap & group_candidates == [])
+              [cell, cell2].each {|c| c.remove_candidates(SORTED_NUMBERS-overlap)}
+            end
+          end
+        end
+      end
     end
   end
 
