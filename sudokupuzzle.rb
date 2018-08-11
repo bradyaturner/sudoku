@@ -77,6 +77,10 @@ class SudokuCell
   def to_s
     "Cell containing #{@value} at pos (#{@row},#{@col}) in grid ##{@grid}"
   end
+
+  def serialize
+    "#{@possible_values.join(',')}:#{@value}"
+  end
 end
 
 class SudokuPuzzle
@@ -100,10 +104,12 @@ class SudokuPuzzle
   end
 
   def import_with_candidates(data)
-    data.split(";").each_with_index do |v,i|
+    data.split(";").each_with_index do |c,i|
       row, col, grid = index_to_coords i
-      values = v.split(',').map(&:to_i)
-      @data << SudokuCell.new(0,row,col,grid,values)
+      cd, vd = c.split(":")
+      value = vd.to_i
+      candidates = cd.split(',').map(&:to_i)
+      @data << SudokuCell.new(value,row,col,grid,candidates)
     end
   end
 
@@ -204,7 +210,7 @@ class SudokuPuzzle
   end
 
   def serialize_with_candidates
-    @data.collect{|v| v.possible_values.join(',')}.join(";")
+    @data.collect{|v| v.serialize }.join(";")
   end
 end
 
