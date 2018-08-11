@@ -165,17 +165,8 @@ class SudokuSolver
       next if cell.solved?
       row, col, grid = get_groups cell, true
       cell.candidate_values.each do |pv|
-        grid_candidates = grid.select{|c| c.candidate_values.include? pv}
         [row, col].each do |group|
-          group_in_grid = group & grid
-          group_out_grid = group - grid
-
-          group_candidates = group_in_grid.select{|c| c.candidate_values.include? pv}
-          if grid_candidates.length == group_candidates.length
-            group_out_grid.each do |c|
-              c.remove_candidate_value pv
-            end
-          end
+          locked_candidates_common(group, grid, pv)
         end
       end
     end
@@ -188,23 +179,30 @@ class SudokuSolver
     @puzzle.cells.each do |cell|
       next if cell.solved?
       row, col, grid = get_groups cell, true
-
       cell.candidate_values.each do |cv|
         [row, col].each do |group|
-          group_in_grid = group & grid
-          grid_out_group = grid - group
-
-          group_candidates = group.select{|c| c.candidate_values.include? cv}
-          group_in_grid_candidates = group_in_grid.select{|c| c.candidate_values.include? cv}
-
-          if group_candidates.length == group_in_grid_candidates.length
-            grid_out_group.each do |c|
-              c.remove_candidate_value cv
-            end
-          end
+          locked_candidates_common(grid, group, cv)
         end
       end
     end
+  end
+
+  def locked_candidates_common(group, filter, value)
+    group_in = group & filter
+    group_out = group - filter
+
+    filter_candidates = cells_with_candidate(filter, value)
+    group_in_candidates = cells_with_candidate(group_in, value)
+
+    if filter_candidates.length == group_in_candidates.length
+      group_out.each do |c|
+        c.remove_candidate_value value
+      end
+    end
+  end
+
+  def cells_with_candidate(group, value)
+    group.select{|c| c.candidate_values.include? value}
   end
 
   def naked_pairs
