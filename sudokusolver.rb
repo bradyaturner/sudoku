@@ -68,7 +68,7 @@ class SudokuSolver
   end
 
   def brute_force_solve
-    @puzzle.data.each_with_index do |v,index|
+    @puzzle.cells.each_with_index do |v,index|
       next if v.solved?
       @logger.info "Guessing values for (#{v.row},#{v.col}): #{v.possible_values}"
       pos_values = v.possible_values
@@ -93,7 +93,7 @@ class SudokuSolver
   # that can contain a specific value
   def hidden_singles
     @logger.info "Applying rule: Hidden Singles"
-    @puzzle.data.each do |cell|
+    @puzzle.cells.each do |cell|
       next if cell.solved?
       @logger.debug cell.to_s
       groups = get_groups cell, false
@@ -114,7 +114,7 @@ class SudokuSolver
   # for each unsolved cell, assign values to any who have only one candidate value
   def singles
     @logger.info "Applying rule: Singles"
-    @puzzle.data.each do |cell|
+    @puzzle.cells.each do |cell|
       next if cell.solved?
       @logger.debug cell.to_s
       if v = cell.update_value
@@ -136,7 +136,7 @@ class SudokuSolver
   # for each unsolved cell, remove candidate values for all solved cells in its groups
   def update_possible_values
     @logger.info "Applying rule: Update Possible Values"
-    @puzzle.data.each do |cell|
+    @puzzle.cells.each do |cell|
       next if cell.solved?
       @logger.debug cell.to_s
 
@@ -150,29 +150,23 @@ class SudokuSolver
     end
   end
 
-  # for each unsolved cell, see if its candidate values exist only in its row or column, for its grid
-  # if so, then that candidate can be removed from all other cells in the row or column outside the grid
+  # for each unsolved cell, check if any of its candidates in a grid are restricted to a row or column
+  # if so, they can be excluded from the other cells in the row or column outside the box
   def locked_candidates_1
     @logger.info "Applying rule: Locked Candidates 1"
-    @puzzle.data.each do |cell|
+    @puzzle.cells.each do |cell|
       next if cell.solved?
-      row, col, grid = get_groups cell
+      row, col, grid = get_groups cell, true
+      cell.possible_values.each do |pv|
+        grid_candidates = grid.select{|c| c.possible_values.include? pv}
+        [row, col].each do |group|
+          group_in_grid = group.select {|c| grid.include? c}
+          group_out_grid = group - group_in_grid
 
-      cell.possible_values.each do |v|
-        ri = row.select{|rc| grid.include?(rc)}.select{|rc| rc.possible_values.include? v}.length
-        ci = col.select{|cc| grid.include?(cc)}.select{|cc| cc.possible_values.include? v}.length
-        gi = grid.select{|gc| gc.possible_values.include? v}.length
-
-        if (gi == ri)
-          row.each do |cell2|
-            if !grid.include?(cell2) && !cell2.solved?
-              cell2.remove_possible_values [v]
-            end
-          end
-        elsif (gi == ci)
-          col.each do |cell2|
-            if !grid.include?(cell2) && !cell2.solved?
-              cell2.remove_possible_values [v]
+          group_candidates = group_in_grid.select{|c| c.possible_values.include? pv}
+          if grid_candidates.length == group_candidates.length
+            group_out_grid.each do |c|
+              c.remove_possible_value pv
             end
           end
         end
@@ -184,7 +178,7 @@ class SudokuSolver
   # if so, then that candidate can be removed from all other cells in the grid outside the row or column
   def locked_candidates_2
     @logger.info "Applying rule: Locked Candidates 2"
-    @puzzle.data.each do |cell|
+    @puzzle.cells.each do |cell|
       next if cell.solved?
       row, col, grid = get_groups cell
 
@@ -212,7 +206,7 @@ class SudokuSolver
 
   def naked_pairs
     @logger.info "Applying rule: Naked Pairs"
-    @puzzle.data.each do |cell|
+    @puzzle.cells.each do |cell|
       next if cell.solved?
       next if cell.possible_values.length != 2
       get_groups(cell, false).each {|g| check_group_naked_pairs(cell, g)}
@@ -233,7 +227,7 @@ class SudokuSolver
   # refactor this to be a single iteration that works on any group type
   def hidden_pairs
     @logger.info "Applying rule: Hidden Pairs"
-    @puzzle.data.each do |cell|
+    @puzzle.cells.each do |cell|
       next if cell.solved?
       next if cell.possible_values.length < 2
       get_groups(cell, false).each {|g| check_group_hidden_pairs(cell, g)}
@@ -280,7 +274,7 @@ class SudokuSolver
   end
 
   def print_possible_values
-    @puzzle.data.each_with_index do |value,index|
+    @puzzle.cells.each_with_index do |value,index|
       next if value.solved?
       puts "\t(#{value.row},#{value.col}): #{value.possible_values}"
     end

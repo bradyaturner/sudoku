@@ -84,9 +84,9 @@ class SudokuCell
 end
 
 class SudokuPuzzle
-  attr_reader :data
+  attr_reader :cells
   def initialize(data, with_candidates=false)
-    @data = []
+    @cells = []
     data.delete!("\r\n")
     if !with_candidates
     raise InputDataError, "Invalid input puzzle size: #{data.length}" if data.length != PUZZLE_WIDTH ** 2
@@ -99,7 +99,7 @@ class SudokuPuzzle
   def import_puzzle(data)
     data.split("").map(&:to_i).each_with_index do |v,i|
       row, col, grid = index_to_coords(i)
-      @data << SudokuCell.new(v,row,col,grid)
+      @cells << SudokuCell.new(v,row,col,grid)
     end
   end
 
@@ -109,7 +109,7 @@ class SudokuPuzzle
       cd, vd = c.split(":")
       value = vd.to_i
       candidates = cd.split(',').map(&:to_i)
-      @data << SudokuCell.new(value,row,col,grid,candidates)
+      @cells << SudokuCell.new(value,row,col,grid,candidates)
     end
   end
 
@@ -121,7 +121,7 @@ class SudokuPuzzle
   end
 
   def print_puzzle(initial_state=false)
-    @data.each_with_index do |value,index|
+    @cells.each_with_index do |value,index|
       print_horizontal_line if (index%27 == 0)
       print "| " if (index%3 == 0)
       char = initial_state ? value.initial_value : value.value
@@ -164,7 +164,7 @@ class SudokuPuzzle
   end
 
   def get_row(num)
-    @data[(num*PUZZLE_WIDTH)..(num*PUZZLE_WIDTH)+8]
+    @cells[(num*PUZZLE_WIDTH)..(num*PUZZLE_WIDTH)+8]
   end
 
   def get_column_values(num)
@@ -173,7 +173,7 @@ class SudokuPuzzle
 
   def get_column(num)
     col = []
-    @data.each_with_index {|val,index| col << val if (index%PUZZLE_WIDTH == num)}
+    @cells.each_with_index {|val,index| col << val if (index%PUZZLE_WIDTH == num)}
     col 
   end
 
@@ -198,19 +198,19 @@ class SudokuPuzzle
   end
 
   def row_value(row,pos)
-    @data[(row * PUZZLE_WIDTH) + pos]
+    @cells[(row * PUZZLE_WIDTH) + pos]
   end
 
   def column_value(column,pos)
-    @data[(pos * PUZZLE_WIDTH) + column]
+    @cells[(pos * PUZZLE_WIDTH) + column]
   end
 
   def serialize
-    @data.collect{|v| v.value}.join
+    @cells.collect{|v| v.value}.join
   end
 
   def serialize_with_candidates
-    @data.collect{|v| v.serialize }.join(";")
+    @cells.collect{|v| v.serialize }.join(";")
   end
 end
 
