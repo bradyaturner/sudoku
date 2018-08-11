@@ -70,7 +70,7 @@ class SudokuCell
     @candidate_values -= values
     if @candidate_values.length <= 0
       @logger.debug "Attempting to remove candidate values #{values.inspect} from cell (#{@row},#{@col})"
-      raise ImcandidateValueError, "No candidate values!"
+      raise ImpossibleValueError, "No candidate values!"
     end
   end
 

@@ -9,6 +9,7 @@ require './exceptions'
 MAX_ITERATIONS = 1000
 
 RULES = [
+  :singles,
   :hidden_singles,
   :locked_candidates_1,
   :locked_candidates_2,
@@ -27,14 +28,21 @@ class SudokuSolver
 
   def apply_rules
     state_before_update = @puzzle.serialize_with_candidates
-    update_candidate_values
+    apply_rule :update_candidate_values
     RULES.each do |rule|
-      send rule
-      # TODO run this every time a candidate value changes, not just after every rule application
-      update_candidate_values
-      singles
+      apply_rule rule
+      # TODO run this every time a candidate value changes, not just after every rule application -- maybe?
+      apply_rule :singles
     end
     state_before_update != @puzzle.serialize_with_candidates
+  end
+
+  def apply_rule(rule)
+    before = @puzzle.serialize_with_candidates
+    send rule
+    changed = (before == @puzzle.serialize_with_candidates)
+    @logger.info "Application of rule #{rule} did #{changed ? "":"not "}advance state."
+    changed
   end
 
   def solve
@@ -80,7 +88,7 @@ class SudokuSolver
           new_solver = SudokuSolver.new(SudokuPuzzle.new(data, true), @brute_force)
           success = new_solver.solve
           return true if success
-        rescue ImcandidateValueError => e # encountering an imcandidate value when guessing just means it was a bad guess
+        rescue ImpossibleValueError => e # encountering an imcandidate value when guessing just means it was a bad guess
           @logger.info "Guessing value FAILED: (#{v.row},#{v.col}): #{v.candidate_values}: (#{pv})"
           v.set_candidate_values pos_values
         end
@@ -146,7 +154,6 @@ class SudokuSolver
       if (cell.candidate_values & excluded).length > 0
         cell.remove_candidate_values(excluded)
       end
-      @logger.debug "\tCandidate: #{cell.candidate_values}#{cell.solved? ? " (solved)" : ""}"
     end
   end
 
@@ -160,8 +167,8 @@ class SudokuSolver
       cell.candidate_values.each do |pv|
         grid_candidates = grid.select{|c| c.candidate_values.include? pv}
         [row, col].each do |group|
-          group_in_grid = group.select {|c| grid.include? c}
-          group_out_grid = group - group_in_grid
+          group_in_grid = group & grid
+          group_out_grid = group - grid
 
           group_candidates = group_in_grid.select{|c| c.candidate_values.include? pv}
           if grid_candidates.length == group_candidates.length
@@ -174,29 +181,25 @@ class SudokuSolver
     end
   end
 
-  # for each unsolved cell, see if its candidate values exist only in its grid, for its row or column
-  # if so, then that candidate can be removed from all other cells in the grid outside the row or column
+  # find candidate values in rows or columns that are restricted to a grid
+  # remove that candidate from other cells in the grid
   def locked_candidates_2
     @logger.info "Applying rule: Locked Candidates 2"
     @puzzle.cells.each do |cell|
       next if cell.solved?
-      row, col, grid = get_groups cell
+      row, col, grid = get_groups cell, true
 
-      cell.candidate_values.each do |v|
-        ri = row.select{|rc| grid.include?(rc)}.select{|rc| rc.candidate_values.include? v}.length
-        ci = col.select{|cc| grid.include?(cc)}.select{|cc| cc.candidate_values.include? v}.length
-        gi = grid.select{|gc| gc.candidate_values.include? v}.length
+      cell.candidate_values.each do |cv|
+        [row, col].each do |group|
+          group_in_grid = group & grid
+          grid_out_group = grid - group
 
-        if (gi == ri)
-          grid.each do |cell2|
-            if !row.include?(cell2) && !cell2.solved?
-              cell2.remove_candidate_values [v]
-            end
-          end
-        elsif (gi == ci)
-          grid.each do |cell2|
-            if !col.include?(cell2) && !cell2.solved?
-              cell2.remove_candidate_values [v]
+          group_candidates = group.select{|c| c.candidate_values.include? cv}
+          group_in_grid_candidates = group_in_grid.select{|c| c.candidate_values.include? cv}
+
+          if group_candidates.length == group_in_grid_candidates.length
+            grid_out_group.each do |c|
+              c.remove_candidate_value cv
             end
           end
         end
