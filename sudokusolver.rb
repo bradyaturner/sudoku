@@ -13,7 +13,7 @@ RULES = [
   :locked_candidates_1,
   :locked_candidates_2,
   :naked_pairs,
-  :hidden_pairs
+#  :hidden_pairs
 ]
 
 class SudokuSolver
@@ -100,31 +100,24 @@ class SudokuSolver
     raise UnsolvableError, "Could not find a solution even with guessing."
   end
 
-  # for each unsolved cell, look at its groups to see if it is the
-  # only resident containing a specific candidate value
+  # for each unsolved cell, check to see if it is the only cell in any of its groups
+  # that can contain a specific value
   def hidden_singles
+    @logger.info "Applying rule: Hidden Singles"
     @puzzle.data.each do |cell|
       next if cell.solved?
       @logger.debug cell.to_s
-      row, col, grid = get_groups cell
+      groups = get_groups cell, false
 
-      new_value = nil
-      cell.possible_values.each do |v|
-        @logger.debug "\tChecking possible value: #{v}"
-        ri = row.select{|rc| rc.possible_values.include? v}.length
-        @logger.debug "\t#{ri} elegible items in this row."
-        ci = col.select{|cc| cc.possible_values.include? v}.length
-        @logger.debug "\t#{ci} elegible items in this column."
-        gi = grid.select{|gc| gc.possible_values.include? v}.length
-        @logger.debug "\t#{gi} elegible items in this grid."
-        if (ri == 1) || (ci == 1) || (gi == 1)
-          new_value = v
+      groups.each do |group|
+        value = cell.possible_values.detect do |v|
+          !group.collect{|c| c.possible_values}.flatten.include? v
+        end
+        if value
+          cell.set_value(value)
+          remove_candidate_from_cell_groups(cell, value)
           break
         end
-      end
-      if !new_value.nil?
-        cell.set_value(new_value)
-        remove_candidate_from_cell_groups(cell, new_value)
       end
     end
   end
