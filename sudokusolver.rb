@@ -28,7 +28,7 @@ class SudokuSolver
 
   def apply_rules
     state_before_update = @puzzle.serialize_with_candidates
-    apply_rule :update_candidate_values
+    apply_rule :update_candidates
     RULES.each do |rule|
       apply_rule rule
       # TODO run this every time a candidate value changes, not just after every rule application -- maybe?
@@ -76,21 +76,21 @@ class SudokuSolver
   end
 
   def brute_force_solve
-    @puzzle.cells.each_with_index do |v,index|
+    @puzzle.cells.each do |v|
       next if v.solved?
-      @logger.info "Guessing values for (#{v.row},#{v.col}): #{v.candidate_values}"
-      pos_values = v.candidate_values
+      @logger.info "Guessing values for (#{v.row},#{v.col}): #{v.candidates}"
+      pos_values = v.candidates
       pos_values.each do |pv|
         begin
-          @logger.info "Guessing value for (#{v.row},#{v.col}): #{v.candidate_values}: (#{pv})"
+          @logger.info "Guessing value for (#{v.row},#{v.col}): #{v.candidates}: (#{pv})"
           v.set_value pv
           data = @puzzle.serialize_with_candidates
           new_solver = SudokuSolver.new(SudokuPuzzle.new(data, true), @brute_force)
           success = new_solver.solve
           return true if success
         rescue ImpossibleValueError => e # encountering an imcandidate value when guessing just means it was a bad guess
-          @logger.info "Guessing value FAILED: (#{v.row},#{v.col}): #{v.candidate_values}: (#{pv})"
-          v.set_candidate_values pos_values
+          @logger.info "Guessing value FAILED: (#{v.row},#{v.col}): #{v.candidates}: (#{pv})"
+          v.set_candidates pos_values
         end
       end
     end
@@ -104,11 +104,11 @@ class SudokuSolver
     @puzzle.cells.each do |cell|
       next if cell.solved?
       @logger.debug cell.to_s
-      groups = get_groups cell, false
+      groups = get_groups cell
 
       groups.each do |group|
-        value = cell.candidate_values.detect do |v|
-          !group.collect{|c| c.candidate_values}.flatten.include? v
+        value = cell.candidates.detect do |v|
+          !group.collect{|c| c.candidates}.flatten.include? v
         end
         if value
           cell.set_value(value)
@@ -133,26 +133,24 @@ class SudokuSolver
 
   def remove_candidate_from_cell_groups(cell, value)
     @logger.debug "Removing value #{value} from all groups for cell (#{cell.row},#{cell.col})."
-    groups = get_groups cell, false
-    groups.each do |group|
-      group.each do |c|
-        c.remove_candidate_value value
-      end
+    groups = get_groups cell
+    groups.flatten.each do |c|
+      c.remove_candidate value
     end
   end
 
   # for each unsolved cell, remove candidate values for all solved cells in its groups
-  def update_candidate_values
+  def update_candidates
     @logger.info "Applying rule: Update Candidate Values"
     @puzzle.cells.each do |cell|
       next if cell.solved?
       @logger.debug cell.to_s
 
-      groups_content = get_groups(cell, false).flatten.collect{|gi| gi.value}
+      groups_content = get_groups(cell).flatten.collect{|gi| gi.value}
       excluded = (groups_content - [0]).uniq
 
-      if (cell.candidate_values & excluded).length > 0
-        cell.remove_candidate_values(excluded)
+      if (cell.candidates & excluded).length > 0
+        cell.remove_candidates(excluded)
       end
     end
   end
@@ -163,11 +161,9 @@ class SudokuSolver
     @logger.info "Applying rule: Locked Candidates 1"
     @puzzle.cells.each do |cell|
       next if cell.solved?
-      row, col, grid = get_groups cell, true
-      cell.candidate_values.each do |pv|
-        [row, col].each do |group|
-          locked_candidates_common(group, grid, pv)
-        end
+      row, col, grid = get_groups(cell, true)
+      cell.candidates.each do |pv|
+        [row, col].each {|g| locked_candidates(g, grid, pv) }
       end
     end
   end
@@ -178,48 +174,40 @@ class SudokuSolver
     @logger.info "Applying rule: Locked Candidates 2"
     @puzzle.cells.each do |cell|
       next if cell.solved?
-      row, col, grid = get_groups cell, true
-      cell.candidate_values.each do |cv|
-        [row, col].each do |group|
-          locked_candidates_common(grid, group, cv)
-        end
+      row, col, grid = get_groups(cell, true)
+      cell.candidates.each do |cv|
+        [row, col].each {|g| locked_candidates(grid, g, cv) }
       end
     end
   end
 
-  def locked_candidates_common(group, filter, value)
-    group_in = group & filter
-    group_out = group - filter
-
-    filter_candidates = cells_with_candidate(filter, value)
-    group_in_candidates = cells_with_candidate(group_in, value)
-
-    if filter_candidates.length == group_in_candidates.length
-      group_out.each do |c|
-        c.remove_candidate_value value
-      end
+  def locked_candidates(group, filter, value)
+    num_in_filter = cells_with_candidate(filter, value)
+    num_in_filtered_group = cells_with_candidate((group&filter), value)
+    if num_in_filter == num_in_filtered_group
+      (group-filter).each {|c| c.remove_candidate value}
     end
   end
 
   def cells_with_candidate(group, value)
-    group.select{|c| c.candidate_values.include? value}
+    group.select{|c| c.candidates.include? value}
   end
 
   def naked_pairs
     @logger.info "Applying rule: Naked Pairs"
     @puzzle.cells.each do |cell|
       next if cell.solved?
-      next if cell.candidate_values.length != 2
-      get_groups(cell, false).each {|g| check_group_naked_pairs(cell, g)}
+      next if cell.candidates.length != 2
+      get_groups(cell).each {|g| check_group_naked_pairs(cell, g)}
     end
   end
 
   def check_group_naked_pairs(cell, group)
-    gi = group.select{|gc| gc.candidate_values == cell.candidate_values}
+    gi = group.select{|gc| gc.candidates == cell.candidates}
     if gi.length == 2
-      @logger.info "Found naked pair at (#{gi.first.row},#{gi.first.col}) and (#{gi.last.row},#{gi.last.col}) for values #{cell.candidate_values.inspect}"
+      @logger.info "Found naked pair at (#{gi.first.row},#{gi.first.col}) and (#{gi.last.row},#{gi.last.col}) for values #{cell.candidates.inspect}"
       group.select{|c|!gi.include?(c) && !c.solved?}.each do |cell2|
-        cell2.remove_candidate_values cell.candidate_values
+        cell2.remove_candidates cell.candidates
       end
     end
   end
@@ -230,22 +218,22 @@ class SudokuSolver
     @logger.info "Applying rule: Hidden Pairs"
     @puzzle.cells.each do |cell|
       next if cell.solved?
-      next if cell.candidate_values.length < 2
-      get_groups(cell, false).each {|g| check_group_hidden_pairs(cell, g)}
+      next if cell.candidates.length < 2
+      get_groups(cell).each {|g| check_group_hidden_pairs(cell, g)}
     end
   end
 
   def check_group_hidden_pairs(cell, group)
     gi = group.select do |pc|
-      pvs = pc.candidate_values & cell.candidate_values
-      other_cells = group.select{|c| c!=pc}.select{|c| (c.candidate_values & pvs) == pvs}
+      pvs = pc.candidates & cell.candidates
+      other_cells = group.select{|c| c!=pc}.select{|c| (c.candidates & pvs) == pvs}
       next if !(pvs.length == 2 && other_cells.length == 0)
       @logger.info "Found hidden pair at (#{cell.row},#{cell.col}) and (#{pc.row},#{pc.col}) for values #{pvs.inspect}"
-      [cell, pc].each {|c2| c2.remove_candidate_values(SORTED_NUMBERS-pvs) }
+      [cell, pc].each {|c2| c2.remove_candidates(SORTED_NUMBERS-pvs) }
     end
   end
 
-  def get_groups(cell, include_self=true)
+  def get_groups(cell, include_self=false)
     row = @puzzle.get_row(cell.row).select{|c| !include_self ? c!=cell : true }
     col = @puzzle.get_column(cell.col).select{|c| !include_self ? c!=cell : true}
     grid = @puzzle.get_grid(cell.grid).select{|c| !include_self ? c!=cell : true}
@@ -271,13 +259,13 @@ class SudokuSolver
     @puzzle.print_puzzle
     puts "Gave up after #{@iterations} iterations."
     puts "Numbers remaining: #{@puzzle.remaining_numbers}"
-    print_candidate_values
+    print_candidates
   end
 
-  def print_candidate_values
-    @puzzle.cells.each_with_index do |value,index|
+  def print_candidates
+    @puzzle.cells.each do |value|
       next if value.solved?
-      puts "\t(#{value.row},#{value.col}): #{value.candidate_values}"
+      puts "\t(#{value.row},#{value.col}): #{value.candidates}"
     end
   end
 end

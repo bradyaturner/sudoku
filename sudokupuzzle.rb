@@ -12,21 +12,21 @@ SORTED_NUMBERS = [1,2,3,4,5,6,7,8,9]
 EMPTY_CHAR = "-"
 
 class SudokuCell
-  attr_reader :value, :initial_value, :candidate_values, :row,
+  attr_reader :value, :initial_value, :candidates, :row,
     :col, :grid
-  def initialize(initial_value, row, col, grid, candidate_values=nil)
+  def initialize(initial_value, row, col, grid, candidates=nil)
     @initial_value = initial_value
     @value = initial_value
     @row = row
     @col = col
     @grid = grid
-    if @initial_value == 0 && candidate_values == nil
-      @candidate_values = Array.new(SORTED_NUMBERS)
+    if @initial_value == 0 && candidates == nil
+      @candidates = Array.new(SORTED_NUMBERS)
     elsif @initial_value == 0
-      @candidate_values = candidate_values
-      @initial_value = @value = @candidate_values.first if @candidate_values.length == 1
+      @candidates = candidates
+      @initial_value = @value = @candidates.first if @candidates.length == 1
     else
-      @candidate_values = [initial_value]
+      @candidates = [initial_value]
     end
     @logger = Logger.new(STDERR)
     @logger.level = LoggerConfig::SUDOKUCELL_LEVEL
@@ -37,38 +37,38 @@ class SudokuCell
       @row == b.row &&
       @col == b.col &&
       @grid == b.grid &&
-      @candidate_values == b.candidate_values
+      @candidates == b.candidates
   end
 
   def solved?
-    (@value != 0) && (@candidate_values.length == 1)
+    (@value != 0) && (@candidates.length == 1)
   end
 
   def set_value(v)
-    raise ImcandidateValueError, "Not candidate value! #{v}, #{@candidate_values.inspect}" if !@candidate_values.include?(v)
+    raise ImcandidateValueError, "Not candidate value! #{v}, #{@candidates.inspect}" if !@candidates.include?(v)
     @value = v
-    @candidate_values = [v]
+    @candidates = [v]
   end
 
   # TODO get rid of this method, shouldn't be exposed outside this class
   # need it now for resetting state when coming out of recursive call for brute forcing
-  def set_candidate_values(pv)
-    @candidate_values = pv
+  def set_candidates(pv)
+    @candidates = pv
     @value = @initial_value
   end
 
   def update_value
-    if @candidate_values.length == 1
-      @value = @candidate_values.first
+    if @candidates.length == 1
+      @value = @candidates.first
     end
   end
 
-  def remove_candidate_value(v) remove_candidate_values [v] end
+  def remove_candidate(v) remove_candidates [v] end
 
-  def remove_candidate_values(values)
-    @logger.debug "remove_candidate_values: #{values.inspect}"
-    @candidate_values -= values
-    if @candidate_values.length <= 0
+  def remove_candidates(values)
+    @logger.debug "remove_candidates: #{values.inspect}"
+    @candidates -= values
+    if @candidates.length <= 0
       @logger.debug "Attempting to remove candidate values #{values.inspect} from cell (#{@row},#{@col})"
       raise ImpossibleValueError, "No candidate values!"
     end
@@ -79,7 +79,7 @@ class SudokuCell
   end
 
   def serialize
-    "#{@candidate_values.join(',')}:#{@value}"
+    "#{@candidates.join(',')}:#{@value}"
   end
 end
 
