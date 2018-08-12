@@ -15,6 +15,7 @@ RULES = [
   :locked_candidates_2,
   :naked_pairs,
   :naked_triples,
+  :naked_quads,
   :hidden_pairs,
 ]
 
@@ -212,56 +213,66 @@ class SudokuSolver
 
   def naked_pairs
     @logger.info "Applying rule: Naked Pairs"
-    @puzzle.cells.each do |cell|
-      next if cell.solved?
-      next if cell.candidates.length != 2
-      get_groups(cell).each {|g| check_group_naked_pairs(cell, g)}
-    end
-  end
-
-  def check_group_naked_pairs(cell, group)
-    gi = group.select{|gc| gc.candidates == cell.candidates}
-    if gi.length == 1
-      cell2 = gi.first
-      @logger.info "Found naked pair at (#{cell2.row},#{cell2.col}) and (#{cell.row},#{cell.col}) for values #{cell.candidates.inspect}"
-      (group - [cell, cell2]).select{|c|!c.solved?}.each do |cell2|
-        cell2.remove_candidates cell.candidates
-      end
-    end
+    naked_n 2
   end
 
   def naked_triples
     @logger.info "Applying rule: Naked Triples"
+    naked_n 3
+  end
+
+  def naked_quads
+    @logger.info "Applying rule: Naked Quads"
+    naked_n 4
+  end
+
+  def naked_n(size)
+    @logger.info "Applying rule: Naked Quads"
     @puzzle.cells.each do |cell|
       next if cell.solved?
-      next if cell.candidates.length > 3
-      get_groups(cell).each {|g| check_group_naked_triples(cell, g)}
+      next if cell.candidates.length > size
+      get_groups(cell).each {|g| check_group_naked_n(cell, g, size)}
     end
   end
 
-  def check_group_naked_triples(cell, group, size=3)
+  def check_group_naked_n(cell, group, size=3)
     gc = group.select {|c| (c.candidates.length <= size) && !c.solved? }
     return if gc.length < (size-1)
-    triple = [cell]
+    set = get_naked_n_cell(cell, group, [cell], size)
 
-    gc.each do |c2|
-      next if (c2.candidates + cell.candidates).uniq.length > size
-      triple << c2
-      (gc - triple).each do |c3|
-        next if (c3.candidates + c2.candidates + cell.candidates).uniq.length != size
-        triple << c3
-        break
-      end
-      break if triple.length == size
-      triple = [cell]
-    end
-
-    if triple.length == size
-      tc = triple.collect{|c|c.candidates}.flatten.uniq
-      (group - triple).select{|c|!c.solved?}.each do |c|
+    if set.length == size
+      tc = set.collect{|c|c.candidates}.flatten.uniq
+      @logger.info "Found naked #{size}: #{tc.inspect}"
+      set.each {|c| @logger.debug c.coords.inspect }
+      (group - set).select{|c|!c.solved?}.each do |c|
         c.remove_candidates tc
       end
     end
+  end
+
+  def get_naked_n_cell(cell, group, set, size, depth=0)
+    (group - set).each do |c|
+      set << c
+      cl = get_uniq_candidates(set).length
+      if cl <= size && (depth+1) < size
+        set = get_naked_n_cell(cell, group, set, size, depth+=1)
+        break if set.length == size
+      elsif cl == size && (depth+1) == size
+        break
+      end
+      set = trim(set, 1)
+    end
+    set
+  end
+
+  # TODO add to array class
+  def trim(arr, count)
+    arr[0..(-1-count)]
+  end
+
+  # TODO create interface for group methods
+  def get_uniq_candidates(arr)
+    arr.collect{|c| c.candidates}.flatten.uniq
   end
 
   def hidden_pairs

@@ -74,6 +74,10 @@ class SudokuCell
     end
   end
 
+  def coords
+    [row,col]
+  end
+
   def to_s
     "Cell containing #{@value} at pos (#{@row},#{@col}) in grid ##{@grid}"
   end
