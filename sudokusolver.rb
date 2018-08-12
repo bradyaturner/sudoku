@@ -244,7 +244,7 @@ class SudokuSolver
 
     if set.length == size
       tc = set.collect{|c|c.candidates}.flatten.uniq
-      @logger.info "Found naked #{size}: #{tc.inspect}"
+      @logger.debug "Found naked #{size}: #{tc.inspect}"
       set.each {|c| @logger.debug c.coords.inspect }
       (group - set).select{|c|!c.solved?}.each do |c|
         c.remove_candidates tc
