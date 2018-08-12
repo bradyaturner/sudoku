@@ -17,6 +17,8 @@ RULES = [
   :naked_triples,
   :naked_quads,
   :hidden_pairs,
+  :hidden_triples,
+  :hidden_quads,
 ]
 
 class SudokuSolver
@@ -255,7 +257,7 @@ class SudokuSolver
       set << c
       cl = get_uniq_candidates(set).length
       if cl <= size && (depth+1) < size
-        set = get_naked_n_cell(cell, group, set, size, depth+=1)
+        set = get_naked_n_cell(cell, group, set, size, depth+1)
         break if set.length == size
       elsif cl == size && (depth+1) == size
         break
@@ -275,23 +277,58 @@ class SudokuSolver
     arr.collect{|c| c.candidates}.flatten.uniq
   end
 
+  def get_common_candidates(arr)
+    arr.collect{|c| c.candidates}.inject(:&)
+  end
+
   def hidden_pairs
     @logger.info "Applying rule: Hidden Pairs"
+    hidden_n 2
+  end
+
+  def hidden_triples
+    @logger.info "Applying rule: Hidden Triples"
+    hidden_n 3
+  end
+
+  def hidden_quads
+    @logger.info "Applying rule: Hidden Quads"
+    hidden_n 4
+  end
+
+  def hidden_n(size)
     @puzzle.cells.each do |cell|
       next if cell.solved?
-      get_groups(cell).each do |group|
-        group.each do |cell2|
-          overlap = cell.candidates & cell2.candidates
-          if overlap.length == 2
-            pair = [cell, cell2]
-            group_candidates = (group - pair).collect{|c| c.candidates}.flatten
-            if (overlap & group_candidates == [])
-              pair.each {|c| c.remove_candidates(SORTED_NUMBERS-overlap)}
-            end
-          end
-        end
-      end
+      get_groups(cell).each {|g| check_group_hidden_n(cell, g, size)}
     end
+  end
+
+  def check_group_hidden_n(cell, group, size)
+    gc = group.select {|c| (c.candidates.length <= size) && !c.solved? }
+    return if gc.length < (size-1)
+    set = get_hidden_n_cell(cell, group, [cell], size)
+
+    if set.length == size
+      overlap = get_common_candidates(set)
+      set.each {|c| c.remove_candidates(SORTED_NUMBERS-overlap)}
+    end
+  end
+
+  def get_hidden_n_cell(cell, group, set, size, depth=0)
+    set = [cell]
+    (group-set).each do |cell2|
+      set << cell2
+      overlap = get_common_candidates(set)
+      if overlap.length <= size && (depth+1) < size
+        set = get_hidden_n_cell(cell, group, set, size, depth+1)
+        break if set.length == size
+      elsif overlap.length == size && (depth+1) == size
+        group_candidates = get_uniq_candidates(group-set)
+        break if (overlap & group_candidates == [])
+      end
+      set = trim(set, 1)
+    end
+    set
   end
 
   def get_groups(cell, include_self=false)
