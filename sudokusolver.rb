@@ -14,7 +14,8 @@ RULES = [
   :locked_candidates_1,
   :locked_candidates_2,
   :naked_pairs,
-  :hidden_pairs
+  :naked_triples,
+  :hidden_pairs,
 ]
 
 class SudokuSolver
@@ -30,7 +31,7 @@ class SudokuSolver
   def update_stats(rule, changed)
     initialize_stats(rule) if !@stats[rule]
     @stats[rule][:invocation_count] += 1
-    @stats[rule][:invocations_no_effect] += 1 if changed
+    @stats[rule][:invocations_no_effect] += 1 if !changed
   end
 
   def initialize_stats(rule)
@@ -41,21 +42,26 @@ class SudokuSolver
 
   def apply_rules
     state_before_update = @puzzle.serialize_with_candidates
+    # TODO should only need once at beginning of solution, not every loop that calls apply_rules
     apply_rule :update_candidates
     RULES.each do |rule|
+      loop { break if !apply_rule :singles }
+      break if @puzzle.solved?
       apply_rule rule
-      # TODO run this every time a candidate value changes, not just after every rule application -- maybe?
-      apply_rule :singles
+      break if @puzzle.solved?
     end
     state_before_update != @puzzle.serialize_with_candidates
   end
 
   def apply_rule(rule, *args)
     before = @puzzle.serialize_with_candidates
+    @logger.debug "Before rule:\n#{before}"
     send rule, *args
-    changed = (before == @puzzle.serialize_with_candidates)
+    after = @puzzle.serialize_with_candidates
+    @logger.debug "After rule\n#{after}"
+    changed = (before != after)
     update_stats(rule, changed)
-    @logger.info "Application of rule #{rule} did #{changed ? "":"not "}advance state."
+    @logger.debug "Application of rule #{rule} did #{changed ? "":"not "}advance state."
     changed
   end
 
@@ -75,8 +81,8 @@ class SudokuSolver
         elsif !was_updated
           raise UnsolvableError, "Update iteration ran with no changes made -- puzzle in unsolvable state!!"
         end
-        break if @puzzle.solved?
         @iterations += 1
+        break if @puzzle.solved?
         if @iterations >= MAX_ITERATIONS
           raise UnsolvableError, "Could not solve puzzle in #{MAX_ITERATIONS} iterations. LITERALLY UNSOLVABLE!!"
         end
@@ -224,18 +230,52 @@ class SudokuSolver
     end
   end
 
+  def naked_triples
+    @logger.info "Applying rule: Naked Triples"
+    @puzzle.cells.each do |cell|
+      next if cell.solved?
+      next if cell.candidates.length > 3
+      get_groups(cell).each {|g| check_group_naked_triples(cell, g)}
+    end
+  end
+
+  def check_group_naked_triples(cell, group, size=3)
+    gc = group.select {|c| (c.candidates.length <= size) && !c.solved? }
+    return if gc.length < (size-1)
+    triple = [cell]
+
+    gc.each do |c2|
+      next if (c2.candidates + cell.candidates).uniq.length > size
+      triple << c2
+      (gc - triple).each do |c3|
+        next if (c3.candidates + c2.candidates + cell.candidates).uniq.length != size
+        triple << c3
+        break
+      end
+      break if triple.length == size
+      triple = [cell]
+    end
+
+    if triple.length == size
+      tc = triple.collect{|c|c.candidates}.flatten.uniq
+      (group - triple).select{|c|!c.solved?}.each do |c|
+        c.remove_candidates tc
+      end
+    end
+  end
+
   def hidden_pairs
     @logger.info "Applying rule: Hidden Pairs"
     @puzzle.cells.each do |cell|
       next if cell.solved?
-      next if cell.candidates.length < 2
       get_groups(cell).each do |group|
         group.each do |cell2|
           overlap = cell.candidates & cell2.candidates
           if overlap.length == 2
-            group_candidates = (group - [cell, cell2]).collect{|c| c.candidates}.flatten
+            pair = [cell, cell2]
+            group_candidates = (group - pair).collect{|c| c.candidates}.flatten
             if (overlap & group_candidates == [])
-              [cell, cell2].each {|c| c.remove_candidates(SORTED_NUMBERS-overlap)}
+              pair.each {|c| c.remove_candidates(SORTED_NUMBERS-overlap)}
             end
           end
         end
