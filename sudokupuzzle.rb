@@ -45,7 +45,7 @@ class SudokuCell
   end
 
   def set_value(v)
-    raise ImcandidateValueError, "Not candidate value! #{v}, #{@candidates.inspect}" if !@candidates.include?(v)
+    raise ImpossibleValueError, "Not candidate value! #{v}, #{@candidates.inspect}" if !@candidates.include?(v)
     @value = v
     @candidates = [v]
   end

@@ -22,6 +22,7 @@ RULES = [
 ]
 
 class SudokuSolver
+  attr_reader :iterations, :stats
   def initialize(puzzle, brute_force=false)
     @puzzle = puzzle
     @brute_force = brute_force
@@ -53,6 +54,7 @@ class SudokuSolver
       apply_rule rule
       break if @puzzle.solved?
     end
+    loop { break if !apply_rule :singles }
     state_before_update != @puzzle.serialize_with_candidates
   end
 
@@ -103,21 +105,30 @@ class SudokuSolver
       next if v.solved?
       @logger.info "Guessing values for (#{v.row},#{v.col}): #{v.candidates}"
       pos_values = v.candidates
+      @logger.info "POSSIBLE VALUES: #{pos_values.inspect}"
+      new_solver = nil
       pos_values.each do |pv|
+        @logger.info "Guessing value for (#{v.row},#{v.col}): #{v.candidates}: (#{pv})"
+        v.set_value pv
+        data = @puzzle.serialize_with_candidates
+        new_solver = SudokuSolver.new(SudokuPuzzle.new(data, true), @brute_force)
+
         begin
-          @logger.info "Guessing value for (#{v.row},#{v.col}): #{v.candidates}: (#{pv})"
-          v.set_value pv
-          data = @puzzle.serialize_with_candidates
-          new_solver = SudokuSolver.new(SudokuPuzzle.new(data, true), @brute_force)
           success = new_solver.solve
+          update_stats_from_child_solver new_solver
           return true if success
-        rescue ImpossibleValueError => e # encountering an imcandidate value when guessing just means it was a bad guess
+        rescue ImpossibleValueError => e # encountering an impossible value when guessing just means it was a bad guess
           @logger.info "Guessing value FAILED: (#{v.row},#{v.col}): #{v.candidates}: (#{pv})"
-          v.set_candidates pos_values
+          update_stats_from_child_solver new_solver
         end
+        v.set_candidates pos_values
       end
     end
     raise UnsolvableError, "Could not find a solution even with guessing."
+  end
+
+  def update_stats_from_child_solver(solver)
+    @iterations += solver.iterations
   end
 
   # for each unsolved cell, check to see if it is the only cell in any of its groups
